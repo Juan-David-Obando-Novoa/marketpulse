@@ -142,7 +142,7 @@ services:
       retries: 12
 
   iceberg-rest:
-    image: apache/iceberg-rest-fixture:1.6.1
+    image: apache/iceberg-rest-fixture:1.9.2
     container_name: mp-iceberg-rest
     profiles: [core]
     depends_on:
