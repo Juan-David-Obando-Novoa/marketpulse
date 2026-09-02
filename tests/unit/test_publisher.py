@@ -187,6 +187,7 @@ def test_a_broken_dlq_does_not_take_down_ingestion(trade: Trade) -> None:
     assert publisher.publish("trades", trade).ok
 
 
+@pytest.mark.filterwarnings("ignore::UserWarning")  # the bad value is the point
 def test_serialisation_failure_is_dead_lettered_not_raised(
     publisher_setup: tuple[MarketDataPublisher, FakeProducer, IngestionMetrics], trade: Trade
 ) -> None:
