@@ -249,6 +249,13 @@ neighbouring version and rebuild. The two most likely candidates are
 `apache/iceberg-rest-fixture` and the `apache/spark` base in
 `docker/spark/Dockerfile`.
 
+**A Spark job dies importing `marketpulse.config` with "unsupported operand
+type(s) for |".** The interpreter is wrong. Spark's base image ships Python
+3.8; the image installs 3.11 and points PYSPARK_PYTHON and
+PYSPARK_DRIVER_PYTHON at it. Check with
+`docker compose exec -T spark python3.11 --version`, and rebuild if the
+variables are unset.
+
 **A container is `unhealthy` but its logs look fine.** Check memory first —
 Docker Desktop's default allocation is well below what Spark and Trino need
 together, and the OOM killer produces confusing symptoms rather than a clear
