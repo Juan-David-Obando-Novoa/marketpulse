@@ -153,7 +153,13 @@ services:
       retries: 12
 
   iceberg-rest:
-    image: apache/iceberg-rest-fixture:1.9.2
+    # Built rather than pulled: the upstream fixture ships no Postgres JDBC
+    # driver, so a postgres:// CATALOG_URI dies at start-up with "No suitable
+    # driver found". See docker/iceberg-rest/Dockerfile.
+    build:
+      context: .
+      dockerfile: docker/iceberg-rest/Dockerfile
+    image: marketpulse/iceberg-rest:1.9.2
     container_name: mp-iceberg-rest
     profiles: [core]
     depends_on:

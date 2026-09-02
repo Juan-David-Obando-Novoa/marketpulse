@@ -239,6 +239,10 @@ well, add `-v`.
 
 ## When something does not come up
 
+**The Iceberg catalog exits with "No suitable driver found".** The image is
+built locally for exactly this reason; make sure the command included
+`--build`, or run `docker compose --profile core build iceberg-rest` first.
+
 **An image tag fails to pull.** Registries retag and occasionally remove
 versions. Every image is pinned in `docker-compose.yml`; bump the tag to a
 neighbouring version and rebuild. The two most likely candidates are
