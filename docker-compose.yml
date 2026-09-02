@@ -36,12 +36,16 @@ services:
     command:
       - redpanda
       - start
+      # dev-container mode is Redpanda's own supported single-node profile: it
+      # sets --overprovisioned, --reserve-memory 0, --check=false and
+      # --unsafe-bypass-fsync in one flag. Passing those individually also
+      # meant passing --node-id, which newer releases no longer accept, and an
+      # unrecognised flag makes the broker exit 1 before it logs anything
+      # useful.
+      - --mode=dev-container
       - --smp=1
       - --memory=1G
-      - --reserve-memory=0M
-      - --overprovisioned
-      - --node-id=0
-      - --check=false
+      - --default-log-level=info
       # Two listeners: 'internal' for services on the compose network,
       # 'external' for tools on the host. Getting this wrong is the single
       # most common Kafka-in-Docker failure -- the advertised address is what
