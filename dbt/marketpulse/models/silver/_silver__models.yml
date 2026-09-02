@@ -1,0 +1,241 @@
+version: 2
+
+models:
+  # -------------------------------------------------------------------------
+  - name: slv_trades
+    description: >-
+      One row per real-world trade. This is where the platform's at-least-once
+      guarantee (ADR-0007) is paid for: bronze tolerates duplicates by design
+      and this model is the single place they are collapsed. Everything
+      downstream reads from here; nothing downstream may read bronze.
+    config:
+      contract:
+        enforced: false
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [exchange_id, symbol, trade_id]
+      # The whole point of the layer. If this ever fails, dedup is broken.
+      - dbt_expectations.expect_table_row_count_to_be_between:
+          arguments:
+            min_value: 1
+          config:
+            severity: warn
+    columns:
+      - name: trade_id
+        description: Venue trade identifier, unique per (exchange_id, symbol).
+        data_tests: [not_null]
+      - name: symbol
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('instrument_reference')
+                field: symbol
+              config:
+                severity: warn
+      - name: price
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                strictly: true
+      - name: quantity
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                strictly: true
+      - name: signed_quantity
+        description: Quantity signed by taker direction. Positive when the taker bought.
+      - name: event_time
+        description: Matching-engine timestamp. The event time for every window downstream.
+        data_tests: [not_null]
+      - name: ingestion_lag_ms
+        description: Matching-engine time to producer accept time.
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                # A negative lag means our clock is behind the venue's, which
+                # biases every latency measure in the platform. Ten seconds of
+                # slack absorbs normal NTP drift; beyond that it is a fault.
+                min_value: -10000
+                max_value: 3600000
+              config:
+                severity: warn
+      - name: _duplicate_count
+        description: >-
+          How many bronze rows this trade appeared as. Above one means a replay
+          was absorbed. Aggregating this is how the duplicate rate stops being
+          a mystery and becomes a metric.
+
+  # -------------------------------------------------------------------------
+  - name: slv_quotes
+    description: >-
+      Deduplicated top-of-book, with the duration each quote was the prevailing
+      one. That duration is what makes an unbiased spread measure possible
+      downstream.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [exchange_id, symbol, update_id]
+    columns:
+      - name: update_id
+        data_tests: [not_null]
+      - name: spread_bps
+        description: Quoted spread in basis points of the mid.
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                # A 500bps spread on a major pair is not a market condition,
+                # it is a data problem. Warn rather than fail: it does occur
+                # briefly during genuine dislocations.
+                max_value: 500
+              config:
+                severity: warn
+      - name: prevailing_ms
+        description: >-
+          Milliseconds this quote was the prevailing top of book. Null on the
+          most recent quote per symbol, which has no successor yet.
+      - name: missed_updates_before
+        description: >-
+          Gap in the venue's monotonic sequence immediately before this quote.
+          Non-zero means updates the venue sent that we never received.
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+      - name: touch_imbalance
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: -1
+                max_value: 1
+
+  # -------------------------------------------------------------------------
+  - name: slv_ohlcv_1m
+    description: >-
+      One-minute candles built from our own trade tape rather than taken from
+      the venue's published klines, which we also ingest. Building them
+      ourselves generalises to any interval and any derived measure, and gives
+      two independent computations of the same quantity -- the reconciliation
+      in gold compares them, and a divergence means we dropped trades,
+      double-counted them, or binned them wrongly. Checking our data against
+      itself would reveal none of that.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [exchange_id, symbol, bar_start]
+      # The OHLC invariant, asserted in SQL as well as in the producer.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "high_price >= greatest(open_price, close_price)"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "low_price <= least(open_price, close_price)"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "taker_buy_base_volume <= base_volume"
+      # VWAP must lie inside the bar's own range. A violation means the
+      # weighting is wrong, which no range check on price alone would catch.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "vwap between low_price and high_price"
+    columns:
+      - name: bar_start
+        description: Inclusive start of the one-minute window, in UTC.
+        data_tests: [not_null]
+      - name: vwap
+        description: Volume-weighted average price. Null only for a zero-volume bar.
+      - name: order_flow_imbalance
+        description: >-
+          Signed taker volume over total volume, in [-1, 1]. +1 means every
+          trade lifted the offer. The most informative field the tape carries
+          beyond price, and it exists only because buyer_is_maker was preserved.
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: -1
+                max_value: 1
+      - name: log_return
+        description: Natural log return against the previous bar's close. Null on the first bar.
+      - name: taker_buy_ratio
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: trade_count
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 1
+
+  # -------------------------------------------------------------------------
+  - name: slv_quote_metrics_1m
+    description: >-
+      Per-minute liquidity metrics. The headline is time_weighted_spread_bps: a
+      simple average across quote updates is biased low, because quotes tighten
+      in bursts of many updates and widen into long quiet stretches, so
+      counting updates equally over-weights exactly the moments when liquidity
+      was best.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [exchange_id, symbol, bar_start]
+    columns:
+      - name: time_weighted_spread_bps
+        description: The spread you would actually have paid, weighted by prevailing duration.
+      - name: mean_spread_bps
+        description: >-
+          The naive per-update average. Kept alongside the time-weighted number
+          because the gap between them measures how uneven the quote rate was.
+      - name: quote_coverage_ratio
+        description: >-
+          Fraction of the minute for which we held a quote at all. Below one
+          means a coverage gap, which makes the weighted number less
+          trustworthy and should be visible rather than hidden.
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: missed_updates
+        description: Book updates lost in this minute. The only place this is visible in the warehouse.
+
+  # -------------------------------------------------------------------------
+  - name: slv_fx_rates
+    description: >-
+      Reference rates as a gapless, non-overlapping interval table. valid_to is
+      recomputed from the next publication rather than trusted from the source,
+      because the publisher occasionally emits an overlapping interval after a
+      correction -- and an overlapping interval table silently multiplies rows
+      in every range join that touches it.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [rate_source, currency_pair, valid_from]
+    columns:
+      - name: rate
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                strictly: true
+      - name: validity_days
+        description: One on a normal business day, three across a weekend, more across a holiday.
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 1
+                max_value: 10
+              config:
+                severity: warn
+      - name: was_rebounded
+        description: >-
+          True when the source's own valid_to disagreed with the next
+          publication. A run of these means the publisher is issuing
+          corrections.
