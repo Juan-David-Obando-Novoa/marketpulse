@@ -50,7 +50,11 @@ TBLPROPERTIES (
     'format-version'                      = '2',
     'write.parquet.compression-codec'     = 'zstd',
     'write.target-file-size-bytes'        = '134217728',
-    'write.distribution-mode'             = 'hash',
+    -- 'none', not 'hash': hash distribution makes Iceberg demand a
+    -- distribution and ordering built from the partition transforms, and
+    -- Spark's streaming write path cannot translate days(...) into a Catalyst
+    -- expression. Batch writes can; streaming ones fail during planning.
+    'write.distribution-mode'             = 'none',
     'write.metadata.delete-after-commit.enabled' = 'true',
     'write.metadata.previous-versions-max'= '20',
     -- Streaming appends create a snapshot per micro-batch: 1440 a day per
@@ -93,12 +97,27 @@ TBLPROPERTIES (
     'format-version'                      = '2',
     'write.parquet.compression-codec'     = 'zstd',
     'write.target-file-size-bytes'        = '134217728',
-    'write.distribution-mode'             = 'hash',
+    -- 'none', not 'hash': hash distribution makes Iceberg demand a
+    -- distribution and ordering built from the partition transforms, and
+    -- Spark's streaming write path cannot translate days(...) into a Catalyst
+    -- expression. Batch writes can; streaming ones fail during planning.
+    'write.distribution-mode'             = 'none',
     'history.expire.max-snapshot-age-ms'  = '604800000',
     'comment'                             = 'Best bid and offer change stream. One row per top-of-book change.'
 );
 
 ALTER TABLE lakehouse.bronze.book_ticker WRITE ORDERED BY symbol, event_time, update_id;
+
+-- ---------------------------------------------------------------------------
+-- Bring already-created tables in line with the properties above.
+--
+-- CREATE TABLE IF NOT EXISTS does nothing to a table that already exists, so
+-- a property added after the first bootstrap would never reach it -- and this
+-- one is the difference between the streaming jobs running and failing during
+-- planning. Re-running this file has to converge, not just not-fail.
+-- ---------------------------------------------------------------------------
+ALTER TABLE lakehouse.bronze.trades SET TBLPROPERTIES ('write.distribution-mode' = 'none');
+ALTER TABLE lakehouse.bronze.book_ticker SET TBLPROPERTIES ('write.distribution-mode' = 'none');
 
 -- ---------------------------------------------------------------------------
 -- Venue-published candles. Low volume, and the independent reference our own
@@ -187,8 +206,9 @@ CREATE TABLE IF NOT EXISTS lakehouse.ops.decode_quarantine (
 USING iceberg
 PARTITIONED BY (days(_ingested_at))
 TBLPROPERTIES (
-    'format-version' = '2',
-    'comment'        = 'Messages whose Avro body would not decode. A non-empty day here means a producer is writing something the registered contract does not describe.'
+    'format-version'          = '2',
+    'write.distribution-mode' = 'none',
+    'comment'                 = 'Messages whose Avro body would not decode. A non-empty day here means a producer is writing something the registered contract does not describe.'
 );
 
 -- ---------------------------------------------------------------------------
@@ -217,3 +237,6 @@ TBLPROPERTIES (
     'format-version' = '2',
     'comment'        = 'Observations of venue instrument filters. Source for the SCD2 snapshot.'
 );
+
+ALTER TABLE lakehouse.ops.decode_quarantine
+    SET TBLPROPERTIES ('write.distribution-mode' = 'none');

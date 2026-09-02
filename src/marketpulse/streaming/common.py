@@ -189,16 +189,27 @@ def write_iceberg_stream(
     megabytes, which is close enough to the 128MB target that compaction is
     housekeeping rather than a rescue.
 
-    ``fanout-enabled`` is off: the input is sorted by partition key upstream
-    (the Kafka partition key is the symbol), so the writer does not need to
-    hold an open file per partition, which is what makes its memory bounded.
+    ``fanout-enabled`` is ON, and it has to be. Without it Iceberg declares a
+    required distribution and ordering derived from the partition spec, and
+    Spark's streaming write path cannot translate a ``days(...)`` transform
+    into a Catalyst expression -- the query dies during planning with
+    "days(trade_time) ASC NULLS FIRST is not currently supported" before a
+    single batch runs. With fanout on, Iceberg requires no ordering and opens a
+    file per partition instead.
+
+    The cost is bounded here by the partition spec rather than by luck: a
+    micro-batch covers about a minute, so it touches one day partition times
+    the symbol buckets it happens to contain -- a handful of open files, not
+    one per distinct value. Sorting is not lost either, it just moves to where
+    it belongs: the table keeps its sort order and nightly compaction applies
+    it, instead of every 60-second batch paying for a shuffle.
     """
     return (
         frame.writeStream.format("iceberg")
         .outputMode(output_mode)
         .option("path", table)
         .option("checkpointLocation", checkpoint_location)
-        .option("fanout-enabled", "false")
+        .option("fanout-enabled", "true")
         .queryName(query_name or f"stream-to-{table}")
         .trigger(processingTime=f"{trigger_seconds} seconds")
         .start()
