@@ -53,13 +53,19 @@ RUN set -eux; \
 COPY docker/spark/spark-defaults.conf /opt/spark/conf/spark-defaults.conf
 COPY docker/spark/log4j2.properties /opt/spark/conf/log4j2.properties
 
-# The application itself: installed rather than mounted, so the image is the
-# unit of deployment. The compose file mounts ./src over this for local
-# iteration, which is a development convenience and not how it ships.
+# The application source is baked in AND reachable through PYTHONPATH rather
+# than pip-installed. Two reasons: the Spark base image ships a pip too old to
+# install a PEP 517 project in editable mode, and more importantly the compose
+# file bind-mounts ./src over this path for local iteration -- an installed
+# copy in site-packages would shadow the mount depending on sys.path order,
+# which presents as "my edit did nothing" and is genuinely unpleasant to
+# diagnose. One copy, one path.
+#
+# Only the runtime dependencies are installed; the driver needs no console
+# scripts, since jobs are submitted as file paths.
 COPY pyproject.toml README.md /opt/marketpulse/
 COPY src /opt/marketpulse/src
-RUN pip install --no-cache-dir --no-deps -e /opt/marketpulse && \
-    pip install --no-cache-dir "pydantic>=2.7,<3" "pydantic-settings>=2.3,<3" \
+RUN pip install --no-cache-dir "pydantic>=2.7,<3" "pydantic-settings>=2.3,<3" \
         "structlog>=24.1" "fastavro>=1.9" "orjson>=3.10" "prometheus-client>=0.20"
 
 ENV PYTHONPATH=/opt/marketpulse/src:$PYTHONPATH

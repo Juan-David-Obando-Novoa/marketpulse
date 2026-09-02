@@ -23,7 +23,14 @@ from typing import Annotated, Any
 import typer
 
 from marketpulse.config import AppSettings, get_settings
-from marketpulse.contracts.models import BookTicker, FxRate, Kline, MarketDataRecord, Trade
+from marketpulse.contracts.models import (
+    BookTicker,
+    DeadLetter,
+    FxRate,
+    Kline,
+    MarketDataRecord,
+    Trade,
+)
 from marketpulse.contracts.registry import (
     SchemaRegistryClient,
     SchemaRegistryError,
@@ -50,6 +57,12 @@ STREAM_MODELS: dict[str, type[MarketDataRecord]] = {
     "klines": Kline,
     "fx_rates": FxRate,
 }
+
+#: Every subject the platform owns, including the dead-letter envelope. The
+#: DLQ is bound lazily by the publisher, but its contract has consumers too --
+#: leaving it unregistered means the one topic you read during an incident is
+#: the one with no schema in the registry.
+ALL_MODELS: dict[str, type[MarketDataRecord]] = {**STREAM_MODELS, "dead_letter": DeadLetter}
 
 
 def _producer_id() -> str:
@@ -236,7 +249,7 @@ def schemas_check() -> None:
     topics = settings.kafka.topics
     incompatible: list[str] = []
 
-    for stream, model in STREAM_MODELS.items():
+    for stream, model in ALL_MODELS.items():
         subject = subject_for(topics[stream])
         schema = load_schema(model.avro_schema_file)
         if client.check_compatibility(subject, schema):
@@ -267,7 +280,7 @@ def schemas_register(
     client = SchemaRegistryClient(settings.kafka.schema_registry_url)
     topics = settings.kafka.topics
 
-    for stream, model in STREAM_MODELS.items():
+    for stream, model in ALL_MODELS.items():
         subject = subject_for(topics[stream])
         try:
             schema_id = client.register(subject, load_schema(model.avro_schema_file))
