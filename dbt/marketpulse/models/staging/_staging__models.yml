@@ -1,0 +1,45 @@
+version: 2
+
+models:
+  - name: stg_binance__trades
+    description: >-
+      Bronze trades, renamed into the platform's vocabulary and cast. No
+      deduplication and no business logic -- that is silver's job. Ephemeral,
+      so nothing downstream can accidentally read it in place of slv_trades.
+    columns:
+      - name: symbol
+        data_tests: [not_null]
+      - name: trade_id
+        data_tests: [not_null]
+      - name: is_buyer_aggressor
+        description: >-
+          The inverse of the venue's buyer_is_maker. True when the taker was
+          buying, i.e. the trade lifted the offer. Named once here so the sign
+          convention is not rediscovered in every downstream model.
+      - name: event_time
+        description: Matching-engine timestamp. The event time for all windowing.
+        data_tests: [not_null]
+      - name: ingestion_lag_ms
+        description: Matching-engine time to producer accept time.
+
+  - name: stg_binance__book_ticker
+    description: Bronze top-of-book, with spread and touch imbalance derived at a single point.
+    columns:
+      - name: spread_bps
+        description: Quoted spread in basis points of the mid. Null when the book is crossed or empty.
+      - name: touch_imbalance
+        description: (bid_qty - ask_qty) / (bid_qty + ask_qty), in [-1, 1]. Positive means bid-heavy.
+
+  - name: stg_binance__klines
+    description: Venue candles, closed bars only, with an exclusive upper bound so bars tile.
+    columns:
+      - name: bar_end
+        description: Exclusive. The venue publishes the last millisecond; this is that plus one.
+
+  - name: stg_banrep__fx_rates
+    description: Official reference rates as half-open validity intervals.
+    columns:
+      - name: validity_days
+        description: >-
+          Usually 1. Three across a weekend, more across a holiday. A value of
+          zero or a negative would mean the source intervals stopped tiling.

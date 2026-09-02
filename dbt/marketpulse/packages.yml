@@ -1,0 +1,10 @@
+packages:
+  # dbt_utils for the generic tests that should have been built in
+  # (equal_rowcount, expression_is_true, unique_combination_of_columns).
+  - package: dbt-labs/dbt_utils
+    version: [">=1.2.0", "<2.0.0"]
+
+  # dbt_expectations for the distributional tests: a market-data platform needs
+  # to assert value ranges and row-count deltas, not just non-null and unique.
+  - package: calogica/dbt_expectations
+    version: [">=0.10.0", "<0.11.0"]

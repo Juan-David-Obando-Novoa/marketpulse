@@ -1,0 +1,100 @@
+# ---------------------------------------------------------------------------
+# MarketPulse transformation layer.
+#
+# The layer boundaries from ADR-0003 are enforced here rather than by
+# convention: staging is ephemeral (it never materialises, so nothing can read
+# it by accident), silver is incremental Iceberg, gold is consumer-facing.
+# ---------------------------------------------------------------------------
+name: marketpulse
+version: "0.1.0"
+config-version: 2
+
+profile: marketpulse
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+seed-paths: ["seeds"]
+snapshot-paths: ["snapshots"]
+test-paths: ["tests"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+require-dbt-version: [">=1.8.0", "<2.0.0"]
+
+vars:
+  # The dedup lookback (ADR-0007). Must exceed the longest plausible producer
+  # reconnect-and-replay window; a websocket drop replays at most a few minutes
+  # of messages, and three hours is a wide, cheap margin.
+  dedup_lookback_hours: 3
+
+  # How far back an incremental run reconsiders. Wider than the dedup window
+  # because a late REST backfill can land candles for a window silver has
+  # already built.
+  incremental_lookback_hours: 24
+
+  # Instruments the platform is expected to carry. Drives the completeness
+  # tests: a symbol missing from a partition is a failure, not an empty result.
+  tracked_symbols: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT"]
+
+  # Candle interval for the primary aggregation.
+  base_interval_minutes: 1
+
+models:
+  marketpulse:
+    +file_format: iceberg
+    +persist_docs:
+      relation: true
+      columns: true
+
+    staging:
+      # Ephemeral: staging exists to rename and cast, and materialising it
+      # would create a second copy of bronze that something would eventually
+      # read instead of silver.
+      +materialized: ephemeral
+      +tags: ["staging"]
+
+    silver:
+      +materialized: incremental
+      +schema: silver
+      +incremental_strategy: merge
+      +on_schema_change: append_new_columns
+      +tags: ["silver"]
+
+    gold:
+      +materialized: table
+      +schema: gold
+      +tags: ["gold"]
+      marts:
+        +materialized: table
+
+seeds:
+  marketpulse:
+    +schema: reference
+    +quote_columns: true
+    instrument_reference:
+      +column_types:
+        symbol: varchar(20)
+        base_asset: varchar(10)
+        quote_asset: varchar(10)
+        tick_size: decimal(38,18)
+        step_size: decimal(38,18)
+        min_notional: decimal(38,18)
+
+snapshots:
+  marketpulse:
+    +target_schema: snapshots
+    +file_format: iceberg
+
+tests:
+  marketpulse:
+    # A failing test writes its offending rows to a table so the failure can be
+    # inspected instead of re-derived from the compiled SQL.
+    +store_failures: true
+    +schema: dbt_test_failures
+    +severity: error
+
+on-run-start:
+  - "{{ log('running against ' ~ target.name ~ ' as ' ~ target.user, info=true) }}"
+
+on-run-end:
+  - "{{ marketpulse.log_run_summary() }}"

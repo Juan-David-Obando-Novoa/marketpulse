@@ -1,0 +1,31 @@
+# Committed on purpose: these are local-development coordinates, not
+# credentials. A deployment overrides them with DBT_PROFILES_DIR pointing at a
+# profile whose values come from the environment.
+marketpulse:
+  target: local
+  outputs:
+    local:
+      type: trino
+      method: none
+      user: "{{ env_var('DBT_TRINO_USER', 'marketpulse') }}"
+      host: "{{ env_var('MP_TRINO_HOST', 'localhost') }}"
+      port: "{{ env_var('MP_TRINO_PORT', '8090') | int }}"
+      catalog: "{{ env_var('MP_ICEBERG__CATALOG_NAME', 'lakehouse') }}"
+      schema: silver
+      threads: 4
+      http_scheme: http
+      session_properties:
+        query_max_run_time: 30m
+      retries: 3
+
+    ci:
+      type: trino
+      method: none
+      user: ci
+      host: "{{ env_var('MP_TRINO_HOST', 'trino') }}"
+      port: 8080
+      catalog: lakehouse
+      schema: silver
+      threads: 8
+      http_scheme: http
+      retries: 1

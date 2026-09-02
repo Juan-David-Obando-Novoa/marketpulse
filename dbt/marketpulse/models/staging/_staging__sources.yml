@@ -1,0 +1,139 @@
+version: 2
+
+sources:
+  - name: bronze
+    description: >-
+      The append-only landing layer written by the Spark streaming jobs.
+      Immutable, duplicate-tolerant, and the reprocessing source of record for
+      everything downstream (ADR-0003). Nothing outside `models/staging` may
+      select from these tables.
+    database: lakehouse
+    schema: bronze
+
+    # Freshness is measured against the venue's own event time rather than our
+    # ingestion time. Measuring ingestion time would report a healthy table
+    # while a stalled producer rewrote the same stale rows.
+    loaded_at_field: trade_time
+    freshness:
+      warn_after: {count: 10, period: minute}
+      error_after: {count: 30, period: minute}
+
+    tables:
+      - name: trades
+        description: Executed trades from the public tape. Highest-volume table in the platform.
+        columns:
+          - name: trade_id
+            description: Venue trade identifier. Unique per (exchange, symbol); not globally unique.
+            data_tests:
+              - not_null
+          - name: symbol
+            data_tests:
+              - not_null
+              - accepted_values:
+                  arguments:
+                    values: "{{ var('tracked_symbols') }}"
+                  config:
+                    severity: warn
+                    error_if: ">100"
+          - name: price
+            data_tests:
+              - not_null
+              - dbt_utils.expression_is_true:
+                  arguments:
+                    expression: "> 0"
+          - name: quantity
+            data_tests:
+              - dbt_utils.expression_is_true:
+                  arguments:
+                    expression: "> 0"
+          - name: trade_time
+            description: Matching-engine timestamp. The event time for every window in the platform.
+            data_tests:
+              - not_null
+          - name: _kafka_offset
+            description: With _kafka_partition, identifies the exact message this row came from.
+
+      - name: book_ticker
+        description: Top-of-book change stream. Roughly an order of magnitude hotter than trades.
+        loaded_at_field: event_time
+        freshness:
+          warn_after: {count: 5, period: minute}
+          error_after: {count: 15, period: minute}
+        columns:
+          - name: update_id
+            description: >-
+              Monotonic per symbol. Gaps mean updates the venue sent and we
+              never received -- silent loss, counted by the producer's
+              sequence tracker.
+            data_tests:
+              - not_null
+          - name: bid_price
+            data_tests: [not_null]
+          - name: ask_price
+            data_tests: [not_null]
+
+      - name: klines
+        description: >-
+          Venue-published OHLCV. Two jobs: historical backfill, and serving as
+          the independent reference the platform's own trade-derived candles
+          are reconciled against.
+        loaded_at_field: open_time
+        freshness:
+          warn_after: {count: 6, period: hour}
+          error_after: {count: 24, period: hour}
+        columns:
+          - name: symbol
+            data_tests: [not_null]
+          - name: interval
+            data_tests:
+              - accepted_values:
+                  arguments:
+                    values: ["1m", "5m", "15m", "1h", "4h", "1d"]
+          - name: open_time
+            data_tests: [not_null]
+
+      - name: fx_rates
+        description: >-
+          Official reference rates as validity intervals. Published on business
+          days only, so freshness is measured in days and tolerates a long
+          weekend plus a public holiday.
+        loaded_at_field: valid_from
+        freshness:
+          warn_after: {count: 2, period: day}
+          error_after: {count: 5, period: day}
+        columns:
+          - name: rate
+            data_tests:
+              - not_null
+              - dbt_utils.expression_is_true:
+                  arguments:
+                    expression: "> 0"
+
+      - name: instrument_metadata
+        description: >-
+          Observations of the venue's instrument filters (tick size, lot size,
+          status). Append-only: the venue changes these without announcement,
+          and a trade that looks invalid against today's filters is usually
+          valid against the ones in force when it printed. The SCD2 snapshot
+          over this table is what makes that checkable.
+        loaded_at_field: observed_at
+        freshness:
+          warn_after: {count: 2, period: day}
+          error_after: {count: 7, period: day}
+        columns:
+          - name: symbol
+            data_tests: [not_null]
+          - name: observed_at
+            description: When we asked the venue -- not when the venue changed the value.
+            data_tests: [not_null]
+
+  - name: ops
+    description: Operational tables written by the platform about itself.
+    database: lakehouse
+    schema: ops
+    tables:
+      - name: decode_quarantine
+        description: >-
+          Messages whose Avro body would not decode. A non-empty day means a
+          producer is writing something the registered contract does not
+          describe.
