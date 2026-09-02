@@ -331,5 +331,54 @@ def topics(
             typer.secho(f"  failed  {name}: {exc}", fg=typer.colors.RED)
 
 
+# ---------------------------------------------------------------------------
+# Reference data
+# ---------------------------------------------------------------------------
+reference_app = typer.Typer(help="Instrument reference synchronisation.", no_args_is_help=True)
+app.add_typer(reference_app, name="reference")
+
+
+@reference_app.command("sync-instruments")
+def sync_instruments(
+    all_symbols: Annotated[
+        bool, typer.Option("--all", help="Sync every instrument the venue lists, not just ours.")
+    ] = False,
+) -> None:
+    """Publish one observation per instrument to the reference topic.
+
+    Append-only: the SCD2 dimension is built from these observations by dbt
+    rather than by maintaining current state here. The venue changes tick size
+    and lot size without announcement, and overwriting a current-state row
+    would destroy the only evidence of when that happened.
+    """
+    settings = get_settings()
+    metrics = _bootstrap(settings)
+
+    async def _run() -> int:
+        from marketpulse.ingestion.binance_rest import BinanceRestClient
+        from marketpulse.ingestion.reference import observations_from_exchange_info
+
+        client = await BinanceRestClient.create(settings.binance, producer_id=_producer_id())
+        try:
+            payload = await client.exchange_info(
+                None if all_symbols else settings.binance.symbols
+            )
+        finally:
+            await client.close()
+
+        observations = observations_from_exchange_info(
+            payload, symbols=None if all_symbols else settings.binance.symbols
+        )
+        for observation in observations:
+            log.info("reference.observed", **{
+                "symbol": observation.symbol,
+                "status": observation.status,
+                "tick_size": str(observation.tick_size),
+            })
+        return len(observations)
+
+    typer.echo(f"{asyncio.run(_run())} instrument observations published")
+
+
 if __name__ == "__main__":  # pragma: no cover
     app()
