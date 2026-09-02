@@ -10,6 +10,15 @@ the `Copy-Item`, and `make <target>` is shorter.
 
 ---
 
+## A note on profiles
+
+Compose profiles here are **cumulative**. Every tier depends on the core one,
+and Compose refuses a project whose `depends_on` names a service that no active
+profile contains -- so `--profile ingestion` on its own fails with
+*"service producer depends on undefined service redpanda"*. Each command below
+therefore passes core alongside whatever tier it needs. `make` hides this; the
+raw commands cannot.
+
 ## Before you start
 
 | Requirement | Check | Notes |
@@ -68,9 +77,9 @@ invocation builds the image.
 
 ```powershell
 docker compose exec -T redpanda rpk cluster config set auto_create_topics_enabled false
-docker compose --profile ingestion build producer
-docker compose run --rm producer marketpulse topics create
-docker compose run --rm producer marketpulse schemas register
+docker compose --profile core --profile ingestion build producer
+docker compose --profile core --profile ingestion run --rm producer marketpulse topics create
+docker compose --profile core --profile ingestion run --rm producer marketpulse schemas register
 ```
 
 The first line disables broker-side topic auto-creation. It is a cluster
@@ -103,8 +112,8 @@ that resolves dependencies on restart cannot start during a network incident)
 but does mean five to ten minutes the first time.
 
 ```powershell
-docker compose --profile processing up -d --build
-docker compose --profile processing ps
+docker compose --profile core --profile processing up -d --build
+docker compose --profile core --profile processing ps
 ```
 
 Then create the Iceberg tables. They are created by explicit DDL rather than
@@ -128,7 +137,7 @@ docker compose exec -T trino trino --execute "show tables from lakehouse.bronze"
 ## 5. Start ingesting
 
 ```powershell
-docker compose --profile ingestion up -d producer
+docker compose --profile core --profile ingestion up -d producer
 docker compose logs -f producer
 ```
 
@@ -158,7 +167,7 @@ docker compose exec -T trino trino --execute "select symbol, count(*) as trades,
 ## 6. Build the warehouse
 
 ```powershell
-docker compose --profile orchestration up -d --build
+docker compose --profile core --profile processing --profile orchestration up -d --build
 ```
 
 The image resolves dbt packages and compiles the manifest at build time, so
@@ -191,7 +200,7 @@ docker compose exec -T trino trino --execute "select symbol, bar_start, close_pr
 
 ```powershell
 docker compose --profile observability up -d
-docker compose --profile serving up -d
+docker compose --profile core --profile processing --profile serving up -d
 ```
 
 Everything, once it is all up:

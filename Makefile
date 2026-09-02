@@ -9,8 +9,16 @@ SHELL := /bin/bash
 .SHELLFLAGS := -eu -o pipefail -c
 
 COMPOSE       := docker compose
+
+# Compose profiles are cumulative: a service may not depend on one that no
+# active profile contains, and every tier here depends on core. So each set
+# below names its own profile AND its dependencies' -- activating `ingestion`
+# alone fails with "depends on undefined service redpanda".
 CORE          := --profile core
+INGESTION     := --profile core --profile ingestion
 PROCESSING    := --profile core --profile processing
+ORCHESTRATION := --profile core --profile processing --profile orchestration
+SERVING       := --profile core --profile processing --profile serving
 EVERYTHING    := --profile core --profile processing --profile ingestion --profile orchestration --profile serving --profile observability
 DBT_DIR       := dbt/marketpulse
 PYTHON        := python3
@@ -81,13 +89,13 @@ ps: ## Show service status
 .PHONY: bootstrap
 bootstrap: ## Provision topics, register schemas and create the Iceberg tables
 	$(COMPOSE) exec -T redpanda rpk cluster config set auto_create_topics_enabled false
-	$(COMPOSE) run --rm producer marketpulse topics create
-	$(COMPOSE) run --rm producer marketpulse schemas register
+	$(COMPOSE) $(INGESTION) run --rm producer marketpulse topics create
+	$(COMPOSE) $(INGESTION) run --rm producer marketpulse schemas register
 	$(COMPOSE) exec -T spark spark-sql -f /opt/marketpulse/src/marketpulse/streaming/ddl/bronze.sql
 
 .PHONY: stream
 stream: ## Run the live websocket producer in the foreground
-	$(COMPOSE) --profile ingestion run --rm --service-ports producer marketpulse stream
+	$(COMPOSE) $(INGESTION) run --rm --service-ports producer marketpulse stream
 
 .PHONY: bronze
 bronze: ## Start the Kafka to Iceberg streaming jobs
@@ -96,7 +104,7 @@ bronze: ## Start the Kafka to Iceberg streaming jobs
 
 .PHONY: backfill
 backfill: ## Backfill candles. SYMBOL=BTCUSDT START=2026-01-01 [END=...]
-	$(COMPOSE) run --rm producer marketpulse backfill \
+	$(COMPOSE) $(INGESTION) run --rm producer marketpulse backfill \
 		--symbol $(SYMBOL) --start $(START) $(if $(END),--end $(END),)
 
 .PHONY: dbt-deps

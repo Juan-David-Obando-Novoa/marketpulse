@@ -8,6 +8,11 @@
 #   make up-orchestr.  +orchestration Dagster webserver and daemon
 #   make up-all        everything including Grafana and the serving API
 #
+# Profiles are CUMULATIVE. Every tier depends on core, and Compose rejects a
+# project whose depends_on names a service no active profile contains -- so
+# `--profile ingestion` alone fails with "depends on undefined service
+# redpanda". Always pass core alongside; the Makefile variables encode this.
+#
 # Every service declares a healthcheck and every dependency uses
 # service_healthy rather than service_started. That is not decoration: Spark
 # starting before the Iceberg catalog is reachable fails in a way whose error
