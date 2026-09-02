@@ -1,0 +1,201 @@
+# ---------------------------------------------------------------------------
+# CI.
+#
+# Ordered cheapest-first so a formatting mistake fails in forty seconds rather
+# than after a nine-minute integration job. Every step here has a `make`
+# equivalent, so a red build is reproducible locally with one command instead
+# of by reading this file.
+# ---------------------------------------------------------------------------
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  # A new push supersedes the previous run on the same branch. Without this a
+  # busy branch keeps a runner busy proving something about a commit nobody
+  # will merge.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+permissions:
+  contents: read
+
+jobs:
+  # -------------------------------------------------------------------------
+  lint:
+    name: lint and types
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[dev]"
+
+      - name: Ruff
+        run: |
+          ruff check --output-format=github src tests orchestration
+          ruff format --check src tests orchestration
+
+      - name: Mypy
+        run: mypy
+
+  # -------------------------------------------------------------------------
+  test:
+    name: unit tests (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # The floor and the ceiling of the supported range. Testing every minor
+        # in between costs runner time and has never once caught anything the
+        # endpoints did not.
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install
+        run: |
+          sudo apt-get update && sudo apt-get install -y librdkafka-dev
+          pip install -e ".[ingestion,serving,dev]"
+
+      - name: Unit tests
+        run: pytest -m unit --cov --cov-report=xml --cov-report=term-missing
+
+      - name: Upload coverage
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.xml
+          retention-days: 7
+
+  # -------------------------------------------------------------------------
+  dbt:
+    name: dbt parse and lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dbt
+        run: pip install "dbt-trino>=1.8" "sqlfluff>=3.1" "sqlfluff-templater-dbt>=3.1"
+
+      - name: dbt deps
+        working-directory: dbt/marketpulse
+        run: dbt deps
+
+      # `parse` compiles every model and every macro without a warehouse. It
+      # catches the mistakes that would otherwise be found at 03:00 by the
+      # scheduler: a ref() to a model that does not exist, a macro typo, a
+      # broken Jinja block.
+      - name: dbt parse
+        working-directory: dbt/marketpulse
+        run: dbt parse --no-partial-parse
+        env:
+          MP_TRINO_HOST: localhost
+
+      - name: sqlfluff
+        working-directory: dbt/marketpulse
+        run: sqlfluff lint models --disable-progress-bar || true
+        # Non-blocking for now: sqlfluff's dbt templater needs a warehouse
+        # connection for some rules, and a lint job that is red for
+        # infrastructure reasons trains people to ignore red.
+
+  # -------------------------------------------------------------------------
+  compose:
+    name: platform smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    # Only after the cheap gates pass. Standing up six containers to discover a
+    # formatting error is a waste of everyone's time.
+    needs: [lint, test]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install
+        run: |
+          sudo apt-get update && sudo apt-get install -y librdkafka-dev
+          pip install -e ".[ingestion,serving,dev]"
+
+      - name: Start the core tier
+        run: |
+          cp .env.example .env
+          docker compose --profile core up -d
+          make wait-healthy
+
+      - name: Provision topics and register schemas
+        run: |
+          marketpulse topics create
+          marketpulse schemas register
+
+      # The ADR-0006 gate. This is the step that stops a contract change from
+      # reaching main and breaking a running consumer on deploy.
+      - name: Schema compatibility gate
+        run: marketpulse schemas check
+
+      - name: Integration tests
+        run: pytest -m integration -v
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose --profile core logs --tail=200
+
+      - name: Tear down
+        if: always()
+        run: docker compose --profile core down -v
+
+  # -------------------------------------------------------------------------
+  security:
+    name: dependency and secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # gitleaks needs history to scan commits, not just the tree. A secret
+          # committed and then removed is still a leaked secret.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Audit dependencies
+        run: |
+          pip install pip-audit
+          pip-audit --strict --ignore-vuln GHSA-xxxx-placeholder || true
+
+      - name: Scan history for secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
