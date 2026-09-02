@@ -58,9 +58,11 @@ services:
       - --schema-registry-addr=internal://0.0.0.0:8081,external://0.0.0.0:18081
       - --rpc-addr=redpanda:33145
       - --advertise-rpc-addr=redpanda:33145
-      # Auto-creation off: a typo in a topic name must be an error, not a new
-      # and permanently empty topic discovered three weeks later.
-      - --set=redpanda.auto_create_topics_enabled=false
+      # Note what is NOT here: auto_create_topics_enabled. It is a *cluster*
+      # property, not a node one, so it belongs in cluster config rather than
+      # in a start flag -- rpk forwards an unrecognised --set straight to the
+      # redpanda binary, which rejects it and exits before logging anything
+      # useful. The bootstrap step sets it through the admin API instead.
     ports:
       - "19092:19092"   # Kafka API
       - "18081:18081"   # Schema Registry

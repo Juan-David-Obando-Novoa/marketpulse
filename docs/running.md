@@ -67,10 +67,16 @@ The producer image carries the CLI, so provisioning runs through it. The first
 invocation builds the image.
 
 ```powershell
+docker compose exec -T redpanda rpk cluster config set auto_create_topics_enabled false
 docker compose --profile ingestion build producer
 docker compose run --rm producer marketpulse topics create
 docker compose run --rm producer marketpulse schemas register
 ```
+
+The first line disables broker-side topic auto-creation. It is a cluster
+property rather than a node one, so it is set through the admin API after the
+broker is up rather than as a start flag -- and it is run from inside the
+container, where rpk finds the admin API on localhost without being told.
 
 `topics create` provisions five topics with explicit retention and partitioning;
 broker-side auto-creation is deliberately disabled, so this step is required
