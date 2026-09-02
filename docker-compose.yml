@@ -1,0 +1,362 @@
+# ---------------------------------------------------------------------------
+# MarketPulse local platform.
+#
+# Compose profiles exist so a laptop does not have to run the whole thing:
+#
+#   make up            core        broker, storage, catalog, metastore
+#   make up-processing +processing Spark cluster and Trino
+#   make up-orchestr.  +orchestration Dagster webserver and daemon
+#   make up-all        everything including Grafana and the serving API
+#
+# Every service declares a healthcheck and every dependency uses
+# service_healthy rather than service_started. That is not decoration: Spark
+# starting before the Iceberg catalog is reachable fails in a way whose error
+# message points at the wrong component entirely.
+# ---------------------------------------------------------------------------
+
+name: marketpulse
+
+x-common-env: &common-env
+  TZ: UTC
+  MP_ENVIRONMENT: ${MP_ENVIRONMENT:-local}
+
+x-aws-env: &aws-env
+  AWS_ACCESS_KEY_ID: ${MP_S3__ACCESS_KEY:-minioadmin}
+  AWS_SECRET_ACCESS_KEY: ${MP_S3__SECRET_KEY:-minioadmin}
+  AWS_REGION: ${MP_S3__REGION:-us-east-1}
+
+services:
+  # -------------------------------------------------------------------------
+  # Streaming tier
+  # -------------------------------------------------------------------------
+  redpanda:
+    image: redpandadata/redpanda:v24.2.9
+    container_name: mp-redpanda
+    profiles: [core]
+    command:
+      - redpanda
+      - start
+      - --smp=1
+      - --memory=1G
+      - --reserve-memory=0M
+      - --overprovisioned
+      - --node-id=0
+      - --check=false
+      # Two listeners: 'internal' for services on the compose network,
+      # 'external' for tools on the host. Getting this wrong is the single
+      # most common Kafka-in-Docker failure -- the advertised address is what
+      # the client reconnects to after metadata discovery, not the address it
+      # dialled.
+      - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr=internal://redpanda:9092,external://localhost:19092
+      - --pandaproxy-addr=internal://0.0.0.0:8082,external://0.0.0.0:18082
+      - --advertise-pandaproxy-addr=internal://redpanda:8082,external://localhost:18082
+      - --schema-registry-addr=internal://0.0.0.0:8081,external://0.0.0.0:18081
+      - --rpc-addr=redpanda:33145
+      - --advertise-rpc-addr=redpanda:33145
+      # Auto-creation off: a typo in a topic name must be an error, not a new
+      # and permanently empty topic discovered three weeks later.
+      - --set=redpanda.auto_create_topics_enabled=false
+    ports:
+      - "19092:19092"   # Kafka API
+      - "18081:18081"   # Schema Registry
+      - "18082:18082"   # HTTP proxy
+      - "9644:9644"     # Admin / Prometheus metrics
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  redpanda-console:
+    image: redpandadata/console:v2.7.2
+    container_name: mp-redpanda-console
+    profiles: [core]
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+      KAFKA_SCHEMAREGISTRY_ENABLED: "true"
+      KAFKA_SCHEMAREGISTRY_URLS: http://redpanda:8081
+    ports:
+      - "8080:8080"
+
+  # -------------------------------------------------------------------------
+  # Storage tier
+  # -------------------------------------------------------------------------
+  minio:
+    image: minio/minio:RELEASE.2024-09-22T00-33-43Z
+    container_name: mp-minio
+    profiles: [core]
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MP_S3__ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MP_S3__SECRET_KEY:-minioadmin}
+      MINIO_DOMAIN: minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  minio-init:
+    image: minio/mc:RELEASE.2024-09-16T17-43-14Z
+    container_name: mp-minio-init
+    profiles: [core]
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "/scripts/create-buckets.sh"]
+    environment:
+      <<: *aws-env
+      MP_S3__BUCKET: ${MP_S3__BUCKET:-lakehouse}
+    volumes:
+      - ./docker/minio/create-buckets.sh:/scripts/create-buckets.sh:ro
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: mp-postgres
+    profiles: [core]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-marketpulse}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-marketpulse}
+      POSTGRES_DB: ${POSTGRES_DB:-marketpulse}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/init-databases.sql:/docker-entrypoint-initdb.d/10-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-marketpulse}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  iceberg-rest:
+    image: apache/iceberg-rest-fixture:1.6.0
+    container_name: mp-iceberg-rest
+    profiles: [core]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      <<: *aws-env
+      CATALOG_WAREHOUSE: s3://${MP_S3__BUCKET:-lakehouse}/warehouse
+      CATALOG_IO__IMPL: org.apache.iceberg.aws.s3.S3FileIO
+      CATALOG_S3_ENDPOINT: http://minio:9000
+      CATALOG_S3_PATH__STYLE__ACCESS: "true"
+      # JDBC-backed rather than in-memory: the catalog is the one piece of
+      # state whose loss makes every table unreadable, so it lives in Postgres
+      # on a volume like any other database.
+      CATALOG_CATALOG__IMPL: org.apache.iceberg.jdbc.JdbcCatalog
+      CATALOG_URI: jdbc:postgresql://postgres:5432/iceberg_catalog
+      CATALOG_JDBC_USER: ${POSTGRES_USER:-marketpulse}
+      CATALOG_JDBC_PASSWORD: ${POSTGRES_PASSWORD:-marketpulse}
+      CATALOG_JDBC_SCHEMA__VERSION: V1
+    ports:
+      - "8181:8181"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8181/v1/config?warehouse=s3://${MP_S3__BUCKET:-lakehouse}/warehouse || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 20s
+
+  # -------------------------------------------------------------------------
+  # Processing tier
+  # -------------------------------------------------------------------------
+  spark:
+    build:
+      context: .
+      dockerfile: docker/spark/Dockerfile
+    image: marketpulse/spark:3.5.3
+    container_name: mp-spark
+    profiles: [processing]
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      iceberg-rest:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      <<: [*common-env, *aws-env]
+      MP_KAFKA__BOOTSTRAP_SERVERS: redpanda:9092
+      MP_KAFKA__SCHEMA_REGISTRY_URL: http://redpanda:8081
+      MP_S3__ENDPOINT: http://minio:9000
+      MP_ICEBERG__REST_URI: http://iceberg-rest:8181
+      SPARK_MODE: driver
+    ports:
+      - "4040:4040"   # Spark UI for the active streaming query
+    volumes:
+      - ./src:/opt/marketpulse/src:ro
+      - spark-checkpoints:/opt/marketpulse/checkpoints
+    command: ["sleep", "infinity"]
+
+  trino:
+    image: trinodb/trino:453
+    container_name: mp-trino
+    profiles: [processing]
+    depends_on:
+      iceberg-rest:
+        condition: service_healthy
+    ports:
+      - "8090:8080"
+    volumes:
+      - ./docker/trino/etc:/etc/trino:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/v1/info | grep -q '\"starting\":false'"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  # -------------------------------------------------------------------------
+  # Ingestion
+  # -------------------------------------------------------------------------
+  producer:
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile
+    image: marketpulse/app:0.1.0
+    container_name: mp-producer
+    profiles: [ingestion]
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    environment:
+      <<: *common-env
+      MP_KAFKA__BOOTSTRAP_SERVERS: redpanda:9092
+      MP_KAFKA__SCHEMA_REGISTRY_URL: http://redpanda:8081
+      MP_BINANCE__SYMBOLS: ${MP_BINANCE__SYMBOLS:-["BTCUSDT","ETHUSDT","SOLUSDT"]}
+    command: ["marketpulse", "stream"]
+    ports:
+      - "9108:9108"   # Prometheus metrics
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------------
+  # Orchestration
+  # -------------------------------------------------------------------------
+  dagster-webserver:
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile
+      target: orchestration
+    image: marketpulse/orchestration:0.1.0
+    container_name: mp-dagster-webserver
+    profiles: [orchestration]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment: &dagster-env
+      <<: [*common-env, *aws-env]
+      DAGSTER_HOME: /opt/dagster/home
+      DAGSTER_PG_HOST: postgres
+      DAGSTER_PG_USERNAME: ${POSTGRES_USER:-marketpulse}
+      DAGSTER_PG_PASSWORD: ${POSTGRES_PASSWORD:-marketpulse}
+      DAGSTER_PG_DB: dagster
+      MP_KAFKA__BOOTSTRAP_SERVERS: redpanda:9092
+      MP_KAFKA__SCHEMA_REGISTRY_URL: http://redpanda:8081
+      MP_S3__ENDPOINT: http://minio:9000
+      MP_ICEBERG__REST_URI: http://iceberg-rest:8181
+      MP_TRINO_HOST: trino
+    command:
+      - dagster-webserver
+      - -h
+      - "0.0.0.0"
+      - -p
+      - "3000"
+      - -w
+      - /opt/dagster/app/workspace.yaml
+    ports:
+      - "3000:3000"
+    volumes:
+      - dagster-home:/opt/dagster/home
+
+  dagster-daemon:
+    image: marketpulse/orchestration:0.1.0
+    container_name: mp-dagster-daemon
+    profiles: [orchestration]
+    depends_on:
+      dagster-webserver:
+        condition: service_started
+    environment: *dagster-env
+    command: ["dagster-daemon", "run", "-w", "/opt/dagster/app/workspace.yaml"]
+    volumes:
+      - dagster-home:/opt/dagster/home
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------------
+  # Serving and observability
+  # -------------------------------------------------------------------------
+  api:
+    image: marketpulse/app:0.1.0
+    container_name: mp-api
+    profiles: [serving]
+    depends_on:
+      trino:
+        condition: service_healthy
+    environment:
+      <<: *common-env
+      MP_TRINO_HOST: trino
+      MP_TRINO_PORT: "8080"
+    command: ["uvicorn", "marketpulse.serving.api:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8000:8000"
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: mp-prometheus
+    profiles: [observability]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-lifecycle
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./docker/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: mp-grafana
+    profiles: [observability]
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+
+volumes:
+  redpanda-data:
+  minio-data:
+  postgres-data:
+  spark-checkpoints:
+  dagster-home:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  default:
+    name: marketpulse
