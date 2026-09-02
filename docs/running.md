@@ -19,6 +19,22 @@ profile contains -- so `--profile ingestion` on its own fails with
 therefore passes core alongside whatever tier it needs. `make` hides this; the
 raw commands cannot.
 
+
+Rather than repeating the flags on every command -- and they are needed on
+`logs` and `ps` too, not just `up` -- set them once for the shell session:
+
+```powershell
+$env:COMPOSE_PROFILES = "core,processing,ingestion,orchestration,serving,observability"
+```
+
+```bash
+export COMPOSE_PROFILES=core,processing,ingestion,orchestration,serving,observability
+```
+
+Every `docker compose` command in this document then works with no flags at
+all, and `docker compose up -d <service>` still starts one service at a time.
+The commands below spell the profiles out so they work either way.
+
 ## Before you start
 
 | Requirement | Check | Notes |
