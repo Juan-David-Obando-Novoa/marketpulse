@@ -61,7 +61,11 @@ def configure_logging(
         wrapper_class=structlog.make_filtering_bound_logger(
             logging.getLevelName(level.upper())
         ),
-        logger_factory=structlog.PrintLoggerFactory(file=sys.stdout),
+        # The stdlib factory (rather than PrintLoggerFactory) is required by
+        # add_logger_name, and means library logs and ours share one sink --
+        # which matters inside Spark and Dagster, where third-party logging
+        # is configured by the host process and we only get to add to it.
+        logger_factory=structlog.stdlib.LoggerFactory(),
         cache_logger_on_first_use=True,
     )
 
