@@ -125,7 +125,9 @@ def decode_avro_value(frame: DataFrame, schema_file: str) -> DataFrame:
     from pyspark.sql.avro.functions import from_avro  # noqa: PLC0415
 
     schema_json = json.dumps(load_schema(schema_file))
-    body = F.expr(f"substring(value, {CONFLUENT_HEADER_BYTES + 1}, length(value) - {CONFLUENT_HEADER_BYTES})")
+    body = F.expr(
+        f"substring(value, {CONFLUENT_HEADER_BYTES + 1}, length(value) - {CONFLUENT_HEADER_BYTES})"
+    )
 
     return (
         frame.select(

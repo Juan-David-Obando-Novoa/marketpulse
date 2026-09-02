@@ -12,9 +12,9 @@ from datetime import date, datetime, timedelta, timezone
 UTC = timezone.utc
 
 __all__ = [
+    "datetime_to_epoch_millis",
     "day_range",
     "epoch_millis_to_datetime",
-    "datetime_to_epoch_millis",
     "floor_to_interval",
     "utc_now",
 ]

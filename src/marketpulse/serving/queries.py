@@ -17,7 +17,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-__all__ = ["MAX_PAGE_SIZE", "Query", "candles", "instruments", "liquidity_ranking", "quality_report"]
+__all__ = [
+    "MAX_PAGE_SIZE",
+    "Query",
+    "candles",
+    "instruments",
+    "liquidity_ranking",
+    "quality_report",
+]
 
 #: Hard ceiling regardless of what the caller asks for. 10,000 one-minute bars
 #: is about a week of a single instrument, which is the largest window a chart

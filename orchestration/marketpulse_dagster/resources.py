@@ -150,7 +150,9 @@ class IcebergCatalogResource(ConfigurableResource):
     warehouse: str = "s3://lakehouse/warehouse"
     s3_endpoint: str = "http://minio:9000"
     access_key: str = "minioadmin"
-    secret_key: str = "minioadmin"
+    # The MinIO development default, not a secret. A real deployment overrides
+    # both from the environment; nothing here is ever baked into an image.
+    secret_key: str = "minioadmin"  # noqa: S105
 
     def load(self) -> Any:
         from pyiceberg.catalog import load_catalog  # noqa: PLC0415

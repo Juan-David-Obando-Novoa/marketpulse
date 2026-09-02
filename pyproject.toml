@@ -86,15 +86,31 @@ select = [
     "SIM",      # simplify
     "TID",      # tidy imports
     "PTH",      # use pathlib
+    "S",        # flake8-bandit: subprocess, urlopen, assert, hardcoded secrets
+    "BLE",      # blind except
+    "DTZ",      # naive datetimes -- the single most costly bug class here
+    "PL",       # pylint: refactor, convention, warning
+    "SLF",      # private-member access
+    "PT",       # pytest style
     "RUF",
 ]
 ignore = [
-    "E501",   # line length handled by the formatter
-    "B008",   # typer/fastapi rely on calls in defaults
+    "E501",    # line length is the formatter's job
+    "B008",    # typer and fastapi put calls in argument defaults by design
+    "PLR0913", # a settings object legitimately has many fields
+    "PLR2004", # a threshold in a test reads better inline than as a constant
+    "S101",    # assert is how pytest works
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101"]
+# Tests legitimately reach into privates to assert on internal state, and
+# hard-coded "credentials" in a test are fixtures, not secrets.
+"tests/**" = ["S101", "S105", "S106", "SLF001", "PLR0915"]
+# These build SQL by interpolation because Trino cannot bind an identifier and
+# because a Dagster partition key is not caller input. Table names come from a
+# module-level allow-list and partition keys are parsed as ISO dates before use;
+# both guarantees are visible at the call site.
+"orchestration/marketpulse_dagster/assets/*.py" = ["S608"]
 "src/marketpulse/streaming/**" = ["N806"]  # Spark idioms use PascalCase locals
 
 [tool.ruff.lint.isort]

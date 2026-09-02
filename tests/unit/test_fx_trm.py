@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
@@ -69,7 +69,6 @@ def test_non_numeric_rate_is_rejected() -> None:
 async def test_fetch_since_builds_a_soql_filter() -> None:
     session = FakeSession([FakeResponse(payload=[TRM_ROW])])
     client = TrmClient(FxSettings(), session)
-    from datetime import datetime, timezone
 
     rates = await client.fetch_since(datetime(2026, 1, 1, tzinfo=timezone.utc))
 
@@ -83,14 +82,14 @@ async def test_one_bad_row_does_not_discard_the_batch() -> None:
     """Today's rate must still land even if a historical row is malformed."""
     session = FakeSession([FakeResponse(payload=[{"valor": "oops"}, TRM_ROW])])
     rates = await TrmClient(FxSettings(), session).fetch_since(
-        __import__("datetime").datetime(2026, 1, 1, tzinfo=__import__("datetime").timezone.utc)
+        datetime(2026, 1, 1, tzinfo=timezone.utc)
     )
     assert len(rates) == 1
 
 
 async def test_http_error_is_surfaced() -> None:
     session = FakeSession([FakeResponse(status=500, text="portal down")])
-    from datetime import datetime, timezone
-
     with pytest.raises(RuntimeError, match="500"):
-        await TrmClient(FxSettings(), session).fetch_since(datetime(2026, 1, 1, tzinfo=timezone.utc))
+        await TrmClient(FxSettings(), session).fetch_since(
+            datetime(2026, 1, 1, tzinfo=timezone.utc)
+        )

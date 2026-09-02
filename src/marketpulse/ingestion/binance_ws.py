@@ -23,7 +23,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Callable
 from typing import TYPE_CHECKING, Any
 
 from marketpulse.contracts.models import BookTicker, Trade
@@ -171,7 +171,9 @@ class BinanceMarketDataFeed:
             self._sequences.reset()
             self._metrics.reconnects.labels(source=EXCHANGE, reason=reason).inc()
             delay = self._backoff.next_delay()
-            log.info("feed.reconnecting", delay_seconds=round(delay, 2), attempt=self._backoff.attempt)
+            log.info(
+                "feed.reconnecting", delay_seconds=round(delay, 2), attempt=self._backoff.attempt
+            )
             with contextlib.suppress(asyncio.TimeoutError):
                 await asyncio.wait_for(self._stop.wait(), timeout=delay)
 

@@ -23,6 +23,7 @@ Three concerns dominate a backfill client against a public API:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -81,9 +82,7 @@ def interval_to_timedelta(interval: str) -> timedelta:
     try:
         return _INTERVALS[interval]
     except KeyError as exc:
-        raise ValueError(
-            f"unsupported interval {interval!r}; known: {sorted(_INTERVALS)}"
-        ) from exc
+        raise ValueError(f"unsupported interval {interval!r}; known: {sorted(_INTERVALS)}") from exc
 
 
 @dataclass(frozen=True, slots=True)
@@ -218,10 +217,10 @@ class BinanceRestClient:
         for key in ("X-MBX-USED-WEIGHT-1M", "x-mbx-used-weight-1m"):
             raw = headers.get(key) if hasattr(headers, "get") else None
             if raw is not None:
-                try:
+                # The venue always sends an integer here; a malformed header
+                # is not worth failing a request over.
+                with contextlib.suppress(TypeError, ValueError):
                     self._used_weight = int(raw)
-                except (TypeError, ValueError):  # pragma: no cover - venue always sends an int
-                    pass
                 return
 
     async def _respect_weight_budget(self) -> None:

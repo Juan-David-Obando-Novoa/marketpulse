@@ -8,6 +8,7 @@ combined stream and REST endpoint.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
 
@@ -161,8 +162,6 @@ def test_book_ticker_field_mapping() -> None:
 
 
 def test_book_ticker_without_venue_timestamp_uses_receipt_time() -> None:
-    from datetime import datetime, timezone
-
     received = datetime(2026, 3, 14, tzinfo=timezone.utc)
     ticker = normalise_book_ticker(BOOK_TICKER_PAYLOAD, producer_id="p1", received_at=received)
     assert ticker.event_time == received == ticker.ingested_at

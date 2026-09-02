@@ -1,14 +1,14 @@
 """Software-defined assets for the MarketPulse platform."""
 
+from marketpulse_dagster.assets.bronze import bronze_reference_load, bronze_streaming_queries
 from marketpulse_dagster.assets.ingestion import (
     binance_klines_backfill,
     fx_reference_rates,
     instrument_metadata,
 )
-from marketpulse_dagster.assets.bronze import bronze_reference_load, bronze_streaming_queries
 from marketpulse_dagster.assets.maintenance import (
-    expire_iceberg_snapshots,
     compact_iceberg_tables,
+    expire_iceberg_snapshots,
     remove_orphan_files,
 )
 from marketpulse_dagster.assets.transformations import marketpulse_dbt_assets

@@ -35,9 +35,7 @@ def registry(schema_registry_url: str) -> SchemaRegistryClient:
 
 
 @pytest.mark.parametrize("stream", sorted(STREAM_MODELS))
-def test_local_schema_is_backward_compatible(
-    registry: SchemaRegistryClient, stream: str
-) -> None:
+def test_local_schema_is_backward_compatible(registry: SchemaRegistryClient, stream: str) -> None:
     """A schema that fails here would break a running consumer on deploy."""
     settings = AppSettings()
     subject = subject_for(settings.kafka.topics[stream])

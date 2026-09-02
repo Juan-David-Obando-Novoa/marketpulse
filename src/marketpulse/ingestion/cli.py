@@ -69,14 +69,14 @@ def _bootstrap(settings: AppSettings) -> IngestionMetrics:
     return metrics
 
 
-def _build_publisher(settings: AppSettings, metrics: IngestionMetrics, *, use_registry: bool) -> Any:
+def _build_publisher(
+    settings: AppSettings, metrics: IngestionMetrics, *, use_registry: bool
+) -> Any:
     from confluent_kafka import Producer  # noqa: PLC0415 - keeps CLI import light
 
     from marketpulse.ingestion.publisher import MarketDataPublisher  # noqa: PLC0415
 
-    registry = (
-        SchemaRegistryClient(settings.kafka.schema_registry_url) if use_registry else None
-    )
+    registry = SchemaRegistryClient(settings.kafka.schema_registry_url) if use_registry else None
     publisher = MarketDataPublisher(
         Producer(settings.kafka.producer_config()),
         settings.kafka,
@@ -84,7 +84,7 @@ def _build_publisher(settings: AppSettings, metrics: IngestionMetrics, *, use_re
         registry=registry,
         producer_id=_producer_id(),
     )
-    publisher.bind_schemas({name: model for name, model in STREAM_MODELS.items()})
+    publisher.bind_schemas(dict(STREAM_MODELS))
     return publisher
 
 
@@ -252,7 +252,9 @@ def schemas_check() -> None:
             fg=typer.colors.RED,
         )
         raise typer.Exit(code=1)
-    typer.secho(f"\nall {len(STREAM_MODELS)} subjects are BACKWARD compatible", fg=typer.colors.GREEN)
+    typer.secho(
+        f"\nall {len(STREAM_MODELS)} subjects are BACKWARD compatible", fg=typer.colors.GREEN
+    )
 
 
 @schemas_app.command("register")
@@ -275,7 +277,9 @@ def schemas_register(
             typer.secho(f"  failed {subject}: {exc}", fg=typer.colors.RED)
             raise typer.Exit(code=1) from exc
 
-    typer.echo(f"\n{len(list_schema_files())} schema files on disk, {len(STREAM_MODELS)} registered")
+    typer.echo(
+        f"\n{len(list_schema_files())} schema files on disk, {len(STREAM_MODELS)} registered"
+    )
 
 
 @app.command("topics")
@@ -352,17 +356,17 @@ def sync_instruments(
     would destroy the only evidence of when that happened.
     """
     settings = get_settings()
-    metrics = _bootstrap(settings)
+    _bootstrap(settings)
 
     async def _run() -> int:
-        from marketpulse.ingestion.binance_rest import BinanceRestClient
-        from marketpulse.ingestion.reference import observations_from_exchange_info
+        from marketpulse.ingestion.binance_rest import BinanceRestClient  # noqa: PLC0415
+        from marketpulse.ingestion.reference import (  # noqa: PLC0415
+            observations_from_exchange_info,
+        )
 
         client = await BinanceRestClient.create(settings.binance, producer_id=_producer_id())
         try:
-            payload = await client.exchange_info(
-                None if all_symbols else settings.binance.symbols
-            )
+            payload = await client.exchange_info(None if all_symbols else settings.binance.symbols)
         finally:
             await client.close()
 
@@ -370,11 +374,14 @@ def sync_instruments(
             payload, symbols=None if all_symbols else settings.binance.symbols
         )
         for observation in observations:
-            log.info("reference.observed", **{
-                "symbol": observation.symbol,
-                "status": observation.status,
-                "tick_size": str(observation.tick_size),
-            })
+            log.info(
+                "reference.observed",
+                **{
+                    "symbol": observation.symbol,
+                    "status": observation.status,
+                    "tick_size": str(observation.tick_size),
+                },
+            )
         return len(observations)
 
     typer.echo(f"{asyncio.run(_run())} instrument observations published")

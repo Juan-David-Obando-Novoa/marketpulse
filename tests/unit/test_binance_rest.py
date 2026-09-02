@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from itertools import pairwise
 
 import pytest
 
@@ -58,7 +59,7 @@ def test_chunks_tile_without_overlap_or_gap() -> None:
     chunks = window.chunks()
     assert chunks[0].start == window.start
     assert chunks[-1].end == window.end
-    for earlier, later in zip(chunks, chunks[1:], strict=False):
+    for earlier, later in pairwise(chunks):
         assert earlier.end == later.start, "half-open windows must tile exactly"
 
 
@@ -92,17 +93,13 @@ async def test_end_time_is_exclusive_on_the_wire() -> None:
 
 async def test_a_multi_page_window_issues_one_request_per_page() -> None:
     session = FakeSession([FakeResponse(payload=[]) for _ in range(3)])
-    await _client(session).fetch_klines(
-        KlineWindow("BTCUSDT", "1m", DAY, DAY + timedelta(days=2))
-    )
+    await _client(session).fetch_klines(KlineWindow("BTCUSDT", "1m", DAY, DAY + timedelta(days=2)))
     assert len(session.requests) == 3
 
 
 async def test_used_weight_is_read_from_the_venue_header() -> None:
     """Counting requests locally is guesswork; the venue is the authority."""
-    session = FakeSession(
-        [FakeResponse(payload=[], headers={"X-MBX-USED-WEIGHT-1M": "137"})]
-    )
+    session = FakeSession([FakeResponse(payload=[], headers={"X-MBX-USED-WEIGHT-1M": "137"})])
     client = _client(session)
     await client.fetch_klines(KlineWindow("BTCUSDT", "1m", DAY, DAY + timedelta(minutes=1)))
     assert client.used_weight == 137

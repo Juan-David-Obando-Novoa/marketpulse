@@ -33,9 +33,7 @@ def test_report_computes_what_was_reclaimed() -> None:
 
 def test_a_growing_table_never_reports_negative_reclamation() -> None:
     """Concurrent writes can grow a table mid-pass; that is not negative work."""
-    report = MaintenanceReport(
-        table="bronze.trades", data_files_before=100, data_files_after=140
-    )
+    report = MaintenanceReport(table="bronze.trades", data_files_before=100, data_files_after=140)
     assert report.files_eliminated == 0
 
 

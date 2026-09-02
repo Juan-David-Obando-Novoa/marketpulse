@@ -15,7 +15,9 @@ pytestmark = pytest.mark.unit
 
 ALL_QUERIES = [
     queries.instruments(tracked_only=True),
-    queries.candles(symbol="BTCUSDT", start="2026-03-14T00:00:00", end="2026-03-15T00:00:00", limit=100),
+    queries.candles(
+        symbol="BTCUSDT", start="2026-03-14T00:00:00", end="2026-03-15T00:00:00", limit=100
+    ),
     queries.liquidity_ranking(window_days=7, limit=50),
     queries.quality_report(symbol="BTCUSDT", days=7),
 ]
@@ -67,4 +69,7 @@ def test_candle_window_is_half_open() -> None:
         symbol="BTCUSDT", start="2026-03-14T00:00:00", end="2026-03-15T00:00:00", limit=10
     ).sql.lower()
     assert "bar_start >= from_iso8601_timestamp(?)" in sql
-    assert "bar_start <  from_iso8601_timestamp(?)" in sql or "bar_start < from_iso8601_timestamp(?)" in sql
+    assert (
+        "bar_start <  from_iso8601_timestamp(?)" in sql
+        or "bar_start < from_iso8601_timestamp(?)" in sql
+    )

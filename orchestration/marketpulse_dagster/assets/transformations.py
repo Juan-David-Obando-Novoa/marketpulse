@@ -58,9 +58,7 @@ class MarketPulseDbtTranslator(DagsterDbtTranslator):
 
     def get_description(self, dbt_resource_props: Mapping[str, Any]) -> str:
         """Carry the dbt description through, so documentation is written once."""
-        return dbt_resource_props.get("description") or super().get_description(
-            dbt_resource_props
-        )
+        return dbt_resource_props.get("description") or super().get_description(dbt_resource_props)
 
 
 @dbt_assets(

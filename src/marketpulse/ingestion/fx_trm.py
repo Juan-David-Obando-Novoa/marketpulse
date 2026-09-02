@@ -110,9 +110,7 @@ class TrmClient:
             # limit and is not a credential in the secret sense, but it is
             # still handled as one.
             headers["X-App-Token"] = settings.app_token.get_secret_value()
-        session = aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=60), headers=headers
-        )
+        session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=60), headers=headers)
         return cls(settings, session, producer_id=producer_id)
 
     async def close(self) -> None:

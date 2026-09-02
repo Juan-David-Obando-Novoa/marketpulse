@@ -47,15 +47,12 @@ def _build(
     metrics = IngestionMetrics()
     publisher = MarketDataPublisher(producer, KafkaSettings(), metrics, producer_id="test")
     publisher.bind_schemas({"trades": Trade, "book_ticker": BookTicker})
-    feed = BinanceMarketDataFeed(
-        settings, publisher, metrics, producer_id="test", connect=connect
-    )
+    feed = BinanceMarketDataFeed(settings, publisher, metrics, producer_id="test", connect=connect)
     return feed, producer, metrics
 
 
 def _counter(metrics: IngestionMetrics, name: str, **labels: str) -> float:
     return metrics.registry.get_sample_value(name, labels) or 0.0
-
 
 
 async def _run_briefly(feed: BinanceMarketDataFeed, *, settle: float = 0.15) -> None:
@@ -111,7 +108,10 @@ async def test_trades_and_quotes_are_published_to_their_topics() -> None:
 
     assert producer.topics() == ["md.trades.v1", "md.book_ticker.v1"]
     assert feed.messages_seen == 2
-    assert _counter(metrics, "marketpulse_messages_received_total", source="binance", stream="trade") == 1.0
+    assert (
+        _counter(metrics, "marketpulse_messages_received_total", source="binance", stream="trade")
+        == 1.0
+    )
 
 
 async def test_control_frames_are_ignored_not_dead_lettered() -> None:
@@ -128,9 +128,7 @@ async def test_control_frames_are_ignored_not_dead_lettered() -> None:
 # --------------------------------------------------------------------------
 async def test_malformed_json_is_dead_lettered_and_the_stream_continues() -> None:
     """One bad frame must not take down the other nineteen symbols."""
-    connect = ScriptedConnect(
-        [FakeSocket(["{not json", _frame("btcusdt@trade", TRADE_PAYLOAD)])]
-    )
+    connect = ScriptedConnect([FakeSocket(["{not json", _frame("btcusdt@trade", TRADE_PAYLOAD)])])
     feed, producer, _ = _build(connect)
 
     await _run_briefly(feed)
@@ -146,12 +144,15 @@ async def test_crossed_quote_is_dead_lettered_with_its_origin_stream() -> None:
     await _run_briefly(feed)
 
     assert producer.topics() == ["md.dead_letter.v1"]
-    assert _counter(
-        metrics,
-        "marketpulse_dead_letters_total",
-        origin_topic="md.book_ticker.v1",
-        error_type="ValidationError",
-    ) == 1.0
+    assert (
+        _counter(
+            metrics,
+            "marketpulse_dead_letters_total",
+            origin_topic="md.book_ticker.v1",
+            error_type="ValidationError",
+        )
+        == 1.0
+    )
 
 
 async def test_venue_sequence_gap_is_counted() -> None:
@@ -164,9 +165,10 @@ async def test_venue_sequence_gap_is_counted() -> None:
 
     await _run_briefly(feed)
 
-    assert _counter(
-        metrics, "marketpulse_sequence_gaps_total", source="binance", symbol="BTCUSDT"
-    ) == 3.0
+    assert (
+        _counter(metrics, "marketpulse_sequence_gaps_total", source="binance", symbol="BTCUSDT")
+        == 3.0
+    )
 
 
 # --------------------------------------------------------------------------
@@ -188,9 +190,12 @@ async def test_silent_socket_triggers_a_reconnect() -> None:
     await asyncio.wait_for(task, timeout=2.0)
 
     assert connect.attempts >= 2, "the idle watchdog should have forced a reconnect"
-    assert _counter(
-        metrics, "marketpulse_feed_reconnects_total", source="binance", reason="ConnectionError"
-    ) >= 1.0
+    assert (
+        _counter(
+            metrics, "marketpulse_feed_reconnects_total", source="binance", reason="ConnectionError"
+        )
+        >= 1.0
+    )
     assert len(producer.messages) >= 2
 
 
@@ -201,7 +206,7 @@ async def test_connection_error_is_retried_with_backoff() -> None:
             FakeSocket([_frame("btcusdt@trade", TRADE_PAYLOAD)]),
         ]
     )
-    feed, producer, metrics = _build(connect)
+    feed, producer, _metrics = _build(connect)
 
     task = asyncio.create_task(feed.run())
     await asyncio.sleep(0.2)
@@ -227,9 +232,10 @@ async def test_sequence_state_is_reset_across_a_reconnect() -> None:
     feed.request_stop()
     await asyncio.wait_for(task, timeout=2.0)
 
-    assert _counter(
-        metrics, "marketpulse_sequence_gaps_total", source="binance", symbol="BTCUSDT"
-    ) == 0.0
+    assert (
+        _counter(metrics, "marketpulse_sequence_gaps_total", source="binance", symbol="BTCUSDT")
+        == 0.0
+    )
 
 
 async def test_connected_gauge_returns_to_zero_after_the_loop_exits() -> None:
@@ -238,6 +244,7 @@ async def test_connected_gauge_returns_to_zero_after_the_loop_exits() -> None:
 
     await _run_briefly(feed)
 
-    assert metrics.registry.get_sample_value(
-        "marketpulse_feed_connected", {"source": "binance"}
-    ) == 0.0
+    assert (
+        metrics.registry.get_sample_value("marketpulse_feed_connected", {"source": "binance"})
+        == 0.0
+    )

@@ -25,11 +25,11 @@ from dagster import (
 from marketpulse_dagster.resources import TrinoResource
 
 __all__ = [
+    "check_all_tracked_symbols_present",
     "check_no_decode_quarantine",
     "check_reconciliation_against_venue",
     "check_silver_freshness",
     "check_trade_volume_within_baseline",
-    "check_all_tracked_symbols_present",
 ]
 
 
@@ -195,9 +195,7 @@ def check_no_decode_quarantine(trino: TrinoResource) -> AssetCheckResult:
         passed=count == 0,
         severity=AssetCheckSeverity.ERROR,
         metadata={"quarantined_last_24h": MetadataValue.int(count)},
-        description=(
-            "see ADR-0006; inspect lakehouse.ops.decode_quarantine" if count else "clean"
-        ),
+        description=("see ADR-0006; inspect lakehouse.ops.decode_quarantine" if count else "clean"),
     )
 
 
@@ -215,7 +213,7 @@ def check_all_tracked_symbols_present(trino: TrinoResource) -> AssetCheckResult:
         "select symbol, coverage_status from lakehouse.gold.dim_instrument "
         "where coverage_status <> 'ok'"
     )
-    problems = {symbol: status for symbol, status in rows}
+    problems = dict(rows)
     missing = [s for s, status in problems.items() if status == "tracked_but_absent"]
     return AssetCheckResult(
         passed=not missing,

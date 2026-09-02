@@ -31,11 +31,11 @@ def _tables(connection: Any, schema: str) -> set[str]:
 
 
 def test_bronze_namespace_matches_the_ddl(trino_connection: Any) -> None:
-    assert EXPECTED_BRONZE <= _tables(trino_connection, "bronze")
+    assert _tables(trino_connection, "bronze") >= EXPECTED_BRONZE
 
 
 def test_gold_namespace_is_complete(trino_connection: Any) -> None:
-    assert EXPECTED_GOLD <= _tables(trino_connection, "gold")
+    assert _tables(trino_connection, "gold") >= EXPECTED_GOLD
 
 
 def test_bronze_trades_is_partitioned_as_designed(trino_connection: Any) -> None:

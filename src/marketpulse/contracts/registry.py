@@ -203,7 +203,7 @@ class SchemaRegistryClient:
                 {"schema": json.dumps(schema), "schemaType": "AVRO"},
             )
         except SchemaRegistryError as exc:
-            if "40401" in str(exc) or "Subject" in str(exc) and "not found" in str(exc):
+            if "40401" in str(exc) or ("Subject" in str(exc) and "not found" in str(exc)):
                 return True
             raise
         return bool(payload.get("is_compatible", False))

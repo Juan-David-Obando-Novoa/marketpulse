@@ -6,6 +6,7 @@ import pytest
 
 from marketpulse.config import KafkaSettings
 from marketpulse.contracts.models import BookTicker, Trade
+from marketpulse.contracts.registry import AvroCodec
 from marketpulse.ingestion.publisher import MarketDataPublisher, ProducerLike
 from marketpulse.observability import IngestionMetrics
 from tests.unit.fakes import FakeProducer
@@ -51,8 +52,6 @@ def test_partition_key_is_the_symbol(
 def test_payload_is_avro_and_round_trips(
     publisher_setup: tuple[MarketDataPublisher, FakeProducer, IngestionMetrics], trade: Trade
 ) -> None:
-    from marketpulse.contracts.registry import AvroCodec
-
     publisher, producer, _ = publisher_setup
     publisher.publish("trades", trade)
     decoded = AvroCodec.from_file("trade.avsc").decode(producer.messages[0]["value"])
@@ -83,12 +82,15 @@ def test_delivery_success_increments_the_published_counter(
 ) -> None:
     publisher, _, metrics = publisher_setup
     publisher.publish("trades", trade)
-    assert _counter_value(
-        metrics,
-        "marketpulse_messages_published_total",
-        topic="md.trades.v1",
-        symbol="BTCUSDT",
-    ) == 1.0
+    assert (
+        _counter_value(
+            metrics,
+            "marketpulse_messages_published_total",
+            topic="md.trades.v1",
+            symbol="BTCUSDT",
+        )
+        == 1.0
+    )
 
 
 def test_broker_rejection_is_counted_not_swallowed(trade: Trade) -> None:
@@ -100,15 +102,21 @@ def test_broker_rejection_is_counted_not_swallowed(trade: Trade) -> None:
 
     publisher.publish("trades", trade)
 
-    assert _counter_value(
-        metrics,
-        "marketpulse_delivery_failures_total",
-        topic="md.trades.v1",
-        reason="_MSG_TIMED_OUT",
-    ) == 1.0
-    assert _counter_value(
-        metrics, "marketpulse_messages_published_total", topic="md.trades.v1", symbol="BTCUSDT"
-    ) == 0.0
+    assert (
+        _counter_value(
+            metrics,
+            "marketpulse_delivery_failures_total",
+            topic="md.trades.v1",
+            reason="_MSG_TIMED_OUT",
+        )
+        == 1.0
+    )
+    assert (
+        _counter_value(
+            metrics, "marketpulse_messages_published_total", topic="md.trades.v1", symbol="BTCUSDT"
+        )
+        == 0.0
+    )
 
 
 def test_full_local_queue_is_backpressure_not_a_crash(trade: Trade) -> None:
@@ -122,19 +130,20 @@ def test_full_local_queue_is_backpressure_not_a_crash(trade: Trade) -> None:
 
     assert not result.ok
     assert isinstance(result.error, BufferError)
-    assert _counter_value(
-        metrics,
-        "marketpulse_delivery_failures_total",
-        topic="md.trades.v1",
-        reason="local_queue_full",
-    ) == 1.0
+    assert (
+        _counter_value(
+            metrics,
+            "marketpulse_delivery_failures_total",
+            topic="md.trades.v1",
+            reason="local_queue_full",
+        )
+        == 1.0
+    )
 
 
 def test_dead_letter_carries_the_exception_and_the_payload(
     publisher_setup: tuple[MarketDataPublisher, FakeProducer, IngestionMetrics],
 ) -> None:
-    from marketpulse.contracts.registry import AvroCodec
-
     publisher, producer, metrics = publisher_setup
     publisher.publish_dead_letter(
         ValueError("crossed book"),
@@ -148,12 +157,15 @@ def test_dead_letter_carries_the_exception_and_the_payload(
     assert envelope["error_type"] == "ValueError"
     assert envelope["raw_payload"] == '{"b":"2","a":"1"}'
     assert envelope["origin_stream"] == "btcusdt@bookTicker"
-    assert _counter_value(
-        metrics,
-        "marketpulse_dead_letters_total",
-        origin_topic="md.book_ticker.v1",
-        error_type="ValueError",
-    ) == 1.0
+    assert (
+        _counter_value(
+            metrics,
+            "marketpulse_dead_letters_total",
+            origin_topic="md.book_ticker.v1",
+            error_type="ValueError",
+        )
+        == 1.0
+    )
 
 
 def test_a_broken_dlq_does_not_take_down_ingestion(trade: Trade) -> None:

@@ -12,6 +12,9 @@ orchestrator was doing internally.
 
 from __future__ import annotations
 
+from datetime import date as date_type
+from datetime import timedelta
+
 from dagster import (
     AssetExecutionContext,
     AutoMaterializePolicy,
@@ -30,7 +33,9 @@ __all__ = ["binance_klines_backfill", "fx_reference_rates", "instrument_metadata
 
 # A public API behind a rate limiter deserves a patient, jittered retry rather
 # than three fast attempts that all bounce off the same 429.
-API_RETRY = RetryPolicy(max_retries=4, delay=30, backoff=Backoff.EXPONENTIAL, jitter=Jitter.PLUS_MINUS)
+API_RETRY = RetryPolicy(
+    max_retries=4, delay=30, backoff=Backoff.EXPONENTIAL, jitter=Jitter.PLUS_MINUS
+)
 
 
 @asset(
@@ -51,17 +56,19 @@ def binance_klines_backfill(
     keys = context.partition_key.keys_by_dimension
     symbol, date = keys["symbol"], keys["date"]
 
-    from datetime import date as date_type, timedelta  # noqa: PLC0415
-
     start = date_type.fromisoformat(date)
     end = start + timedelta(days=1)
 
     output = marketpulse_cli.run(
         "backfill",
-        "--symbol", symbol,
-        "--start", start.isoformat(),
-        "--end", end.isoformat(),
-        "--interval", "1m",
+        "--symbol",
+        symbol,
+        "--start",
+        start.isoformat(),
+        "--end",
+        end.isoformat(),
+        "--interval",
+        "1m",
     )
 
     # 1440 minutes in a day. Anything materially short is a venue gap or a
@@ -97,8 +104,6 @@ def binance_klines_backfill(
 def fx_reference_rates(
     context: AssetExecutionContext, marketpulse_cli: MarketPulseCliResource
 ) -> Output[None]:
-    from datetime import date as date_type, timedelta  # noqa: PLC0415
-
     partition_date = date_type.fromisoformat(context.partition_key)
     since = partition_date - timedelta(days=30)
 

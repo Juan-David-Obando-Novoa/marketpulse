@@ -25,7 +25,7 @@ import os
 import time
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
@@ -94,7 +94,9 @@ def get_gateway() -> TrinoGateway:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> Iterator[None]:
-    global _gateway
+    # Set once here and read through a FastAPI dependency, which is the
+    # framework's own idiom for process-wide state.
+    global _gateway  # noqa: PLW0603
     configure_logging(level=os.getenv("MP_OBSERVABILITY__LOG_LEVEL", "INFO"))
     _gateway = TrinoGateway(
         host=os.getenv("MP_TRINO_HOST", "localhost"),
@@ -202,13 +204,15 @@ async def health(gateway: Annotated[TrinoGateway, Depends(get_gateway)]) -> Heal
 @app.get("/v1/instruments", response_model=list[Instrument], tags=["reference"])
 async def list_instruments(
     gateway: Annotated[TrinoGateway, Depends(get_gateway)],
-    tracked_only: Annotated[bool, Query(description="Only instruments the platform tracks.")] = True,
+    tracked_only: Annotated[
+        bool, Query(description="Only instruments the platform tracks.")
+    ] = True,
 ) -> list[dict[str, Any]]:
     return await gateway.fetch(queries.instruments(tracked_only=tracked_only))
 
 
 @app.get("/v1/candles/{symbol}", response_model=list[Candle], tags=["market data"])
-async def get_candles(
+async def get_candles(  # noqa: PLR0917 - FastAPI declares its interface as parameters
     symbol: str,
     gateway: Annotated[TrinoGateway, Depends(get_gateway)],
     start: Annotated[datetime | None, Query(description="Inclusive, ISO 8601.")] = None,
@@ -266,9 +270,7 @@ async def liquidity_ranking(
     """
     if window_days not in (1, 7, 30):
         raise HTTPException(status_code=422, detail="window_days must be 1, 7 or 30")
-    return await gateway.fetch(
-        queries.liquidity_ranking(window_days=window_days, limit=limit)
-    )
+    return await gateway.fetch(queries.liquidity_ranking(window_days=window_days, limit=limit))
 
 
 @app.get("/v1/quality", tags=["operations"])

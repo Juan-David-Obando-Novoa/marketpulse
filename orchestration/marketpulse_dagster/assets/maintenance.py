@@ -59,9 +59,7 @@ SNAPSHOT_RETENTION_DAYS = 7
         "1,440 commits a day per table."
     ),
 )
-def compact_iceberg_tables(
-    context: AssetExecutionContext, trino: TrinoResource
-) -> Output[None]:
+def compact_iceberg_tables(context: AssetExecutionContext, trino: TrinoResource) -> Output[None]:
     results: dict[str, object] = {}
     for table in MAINTAINED_TABLES:
         # Iceberg exposes its own metadata as queryable tables. Counting files
@@ -70,9 +68,11 @@ def compact_iceberg_tables(
         # one -- a compaction that silently no-ops is the failure mode here.
         before = _file_count(trino, table)
         try:
+            # `table` comes from MAINTAINED_TABLES, a module constant. Trino
+            # has no parameter binding for identifiers, so interpolation is
+            # the only option and the allow-list is what makes it safe.
             trino.query(
-                f"ALTER TABLE lakehouse.{table} "
-                "EXECUTE optimize(file_size_threshold => '96MB')"
+                f"ALTER TABLE lakehouse.{table} EXECUTE optimize(file_size_threshold => '96MB')"
             )
             after = _file_count(trino, table)
             results[table] = {"files_before": before, "files_after": after}
@@ -81,7 +81,9 @@ def compact_iceberg_tables(
             results[table] = {"error": str(exc)[:500]}
             context.log.error("compaction failed for %s: %s", table, exc)
 
-    failures = [t for t, status in results.items() if isinstance(status, dict) and "error" in status]
+    failures = [
+        t for t, status in results.items() if isinstance(status, dict) and "error" in status
+    ]
     reclaimed = sum(
         status["files_before"] - status["files_after"]  # type: ignore[operator, index]
         for status in results.values()
@@ -123,9 +125,7 @@ def _file_count(trino: TrinoResource, table: str) -> int:
         "stay reachable from older snapshots."
     ),
 )
-def expire_iceberg_snapshots(
-    context: AssetExecutionContext, trino: TrinoResource
-) -> Output[None]:
+def expire_iceberg_snapshots(context: AssetExecutionContext, trino: TrinoResource) -> Output[None]:
     retention = f"{SNAPSHOT_RETENTION_DAYS}d"
     results: dict[str, str] = {}
     for table in MAINTAINED_TABLES:
@@ -145,9 +145,7 @@ def expire_iceberg_snapshots(
             "tables": MetadataValue.json(results),
             # Time travel is bounded by this. Anyone relying on `FOR VERSION AS
             # OF` beyond the window needs to know where the limit comes from.
-            "time_travel_horizon": MetadataValue.text(
-                str(timedelta(days=SNAPSHOT_RETENTION_DAYS))
-            ),
+            "time_travel_horizon": MetadataValue.text(str(timedelta(days=SNAPSHOT_RETENTION_DAYS))),
         },
     )
 

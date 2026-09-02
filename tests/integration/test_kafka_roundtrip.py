@@ -32,7 +32,9 @@ def topic(kafka_bootstrap: str) -> str:
 
     name = f"test.trades.{uuid.uuid4().hex[:8]}"
     admin = AdminClient({"bootstrap.servers": kafka_bootstrap})
-    for future in admin.create_topics([NewTopic(name, num_partitions=3, replication_factor=1)]).values():
+    for future in admin.create_topics(
+        [NewTopic(name, num_partitions=3, replication_factor=1)]
+    ).values():
         future.result()
     yield name
     for future in admin.delete_topics([name]).values():

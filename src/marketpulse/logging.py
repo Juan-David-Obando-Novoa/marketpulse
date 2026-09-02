@@ -33,7 +33,10 @@ def configure_logging(
     matters because Spark executors and Dagster processes have different
     entry points into the same library code.
     """
-    global _CONFIGURED
+    # Module-level flag rather than an object: configure_logging is called
+    # from several entry points (CLI, Spark executor, Dagster op) and must
+    # be idempotent across all of them without any one of them owning it.
+    global _CONFIGURED  # noqa: PLW0603
     if _CONFIGURED:
         return
 
@@ -58,9 +61,7 @@ def configure_logging(
             structlog.processors.format_exc_info,
             renderer,
         ],
-        wrapper_class=structlog.make_filtering_bound_logger(
-            logging.getLevelName(level.upper())
-        ),
+        wrapper_class=structlog.make_filtering_bound_logger(logging.getLevelName(level.upper())),
         # The stdlib factory (rather than PrintLoggerFactory) is required by
         # add_logger_name, and means library logs and ours share one sink --
         # which matters inside Spark and Dagster, where third-party logging

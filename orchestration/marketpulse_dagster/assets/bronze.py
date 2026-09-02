@@ -15,6 +15,8 @@ The low-volume reference topics are genuinely batch, and are drained with
 
 from __future__ import annotations
 
+from datetime import date
+
 from dagster import (
     AssetExecutionContext,
     MetadataValue,
@@ -84,14 +86,20 @@ def bronze_reference_load(
 ) -> Output[None]:
     spark.submit("/opt/marketpulse/src/marketpulse/streaming/batch_reference.py")
 
+    # The interpolated value is a Dagster partition key -- an ISO date the
+    # framework generated from the partition definition, never a caller's
+    # input. Validated here anyway, so the guarantee is local and checkable
+    # rather than an assumption about the framework three files away.
+    partition_date = date.fromisoformat(context.partition_key).isoformat()
+
     klines = trino.scalar(
         "select count(*) from lakehouse.bronze.klines "
-        f"where cast(open_time as date) = date '{context.partition_key}'",
+        f"where cast(open_time as date) = date '{partition_date}'",
         0,
     )
     quarantined = trino.scalar(
         "select count(*) from lakehouse.ops.decode_quarantine "
-        f"where cast(_ingested_at as date) = date '{context.partition_key}'",
+        f"where cast(_ingested_at as date) = date '{partition_date}'",
         0,
     )
 
