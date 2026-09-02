@@ -1,0 +1,28 @@
+[sqlfluff]
+templater = jinja
+dialect = trino
+max_line_length = 120
+exclude_rules = RF01, ST06, AM04
+
+[sqlfluff:indentation]
+tab_space_size = 4
+indented_joins = false
+indented_ctes = false
+
+[sqlfluff:rules:capitalisation.keywords]
+capitalisation_policy = lower
+
+[sqlfluff:rules:capitalisation.identifiers]
+extended_capitalisation_policy = lower
+
+[sqlfluff:rules:capitalisation.functions]
+extended_capitalisation_policy = lower
+
+[sqlfluff:rules:aliasing.table]
+aliasing = explicit
+
+[sqlfluff:rules:references.consistent]
+force_enable = true
+
+[sqlfluff:templater:jinja]
+apply_dbt_builtins = true
