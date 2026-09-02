@@ -189,20 +189,21 @@ def write_iceberg_stream(
     megabytes, which is close enough to the 128MB target that compaction is
     housekeeping rather than a rescue.
 
-    ``fanout-enabled`` is ON, and it has to be. Without it Iceberg declares a
-    required distribution and ordering derived from the partition spec, and
-    Spark's streaming write path cannot translate a ``days(...)`` transform
-    into a Catalyst expression -- the query dies during planning with
-    "days(trade_time) ASC NULLS FIRST is not currently supported" before a
-    single batch runs. With fanout on, Iceberg requires no ordering and opens a
-    file per partition instead.
+    ``fanout-enabled`` is ON, and it has to be -- but on its own it is not
+    enough, which is the part that costs an afternoon.
 
-    The cost is bounded here by the partition spec rather than by luck: a
-    micro-batch covers about a minute, so it touches one day partition times
-    the symbol buckets it happens to contain -- a handful of open files, not
-    one per distinct value. Sorting is not lost either, it just moves to where
-    it belongs: the table keeps its sort order and nightly compaction applies
-    it, instead of every 60-second batch paying for a shuffle.
+    Iceberg drops the required write ordering only when fanout is enabled AND
+    the table carries no sort order. Miss either half and it demands an
+    ordering built from the partition transforms, which Spark's streaming write
+    path cannot translate: the query dies during planning with "days(trade_time)
+    ASC NULLS FIRST is not currently supported", before a single row moves. So
+    the bronze streaming targets are declared WRITE UNORDERED in the DDL, and
+    this option is the other half of that pair.
+
+    The memory cost of fanout is bounded by the partition spec rather than by
+    luck: a micro-batch covers about a minute, so it touches one day partition
+    times whichever symbol buckets it contains -- a handful of open files, not
+    one per distinct value.
     """
     return (
         frame.writeStream.format("iceberg")

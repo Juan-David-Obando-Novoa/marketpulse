@@ -63,9 +63,21 @@ TBLPROPERTIES (
     'comment'                             = 'Append-only tape of executed trades. Never updated. Reprocessing source for silver.'
 );
 
--- Sort within each data file by the natural key, so the silver dedup's window
--- function reads sorted input and the file-level min/max on trade_id prunes.
-ALTER TABLE lakehouse.bronze.trades WRITE ORDERED BY symbol, trade_time, trade_id;
+-- WRITE UNORDERED, and not by preference.
+--
+-- Iceberg skips the required write ordering only when fanout writers are
+-- enabled AND the table is unsorted. A sorted table makes it demand an
+-- ordering built from the partition transforms, and Spark's streaming write
+-- path cannot translate days(...) into a Catalyst expression -- the query then
+-- fails during planning with "days(trade_time) ASC NULLS FIRST is not
+-- currently supported", before a single row is written.
+--
+-- What is actually lost is small: pruning here is carried by the partition
+-- spec (day plus symbol bucket), and within-file sorting is a second-order
+-- optimisation on top of it. Re-sorting belongs to compaction anyway, as a
+-- Spark rewrite_data_files call with an explicit sort order -- not to a
+-- 60-second micro-batch, which would pay for a shuffle every minute.
+ALTER TABLE lakehouse.bronze.trades WRITE UNORDERED;
 
 -- ---------------------------------------------------------------------------
 -- Top of book.
@@ -106,7 +118,8 @@ TBLPROPERTIES (
     'comment'                             = 'Best bid and offer change stream. One row per top-of-book change.'
 );
 
-ALTER TABLE lakehouse.bronze.book_ticker WRITE ORDERED BY symbol, event_time, update_id;
+-- Unsorted for the same reason as trades above.
+ALTER TABLE lakehouse.bronze.book_ticker WRITE UNORDERED;
 
 -- ---------------------------------------------------------------------------
 -- Bring already-created tables in line with the properties above.
