@@ -64,8 +64,6 @@ models:
       +materialized: table
       +schema: gold
       +tags: ["gold"]
-      marts:
-        +materialized: table
 
 seeds:
   marketpulse:
