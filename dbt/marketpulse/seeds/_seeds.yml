@@ -1,0 +1,21 @@
+version: 2
+
+seeds:
+  - name: instrument_reference
+    description: >-
+      Hand-maintained instrument reference. This is a seed rather than an API
+      pull on purpose: it is the platform's own statement of which instruments
+      it intends to carry, and it must not change because the venue changed
+      something. The venue's live view arrives separately through
+      exchangeInfo and is snapshotted; disagreement between the two is a
+      finding, not something to paper over.
+    columns:
+      - name: symbol
+        data_tests: [unique, not_null]
+      - name: tick_size
+        description: Minimum price increment. A trade price off this grid is a data error.
+        data_tests: [not_null]
+      - name: step_size
+        description: Minimum quantity increment.
+      - name: is_tracked
+        description: Whether the ingestion layer is expected to be subscribed to this instrument.

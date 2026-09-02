@@ -1,0 +1,190 @@
+version: 2
+
+models:
+  - name: dim_instrument
+    description: >-
+      The instrument dimension. Reconciles what the platform intends to carry
+      (the seed) against what actually arrived (the lake), and keeps the
+      disagreement as a column rather than resolving it silently.
+    columns:
+      - name: symbol
+        data_tests: [unique, not_null]
+      - name: coverage_status
+        description: >-
+          ok, tracked_but_absent (we should be receiving this and are not),
+          unexpected_in_lake (arriving without being in the reference), or
+          reference_only.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [ok, tracked_but_absent, unexpected_in_lake, reference_only]
+      - name: tick_size
+        description: Minimum price increment as the platform expects it.
+
+  - name: fct_market_1m
+    description: >-
+      One row per instrument per minute, joining what traded with what was
+      quoted. The join from trades to quotes is a LEFT join and never an inner
+      one: a minute with trades but no quote update is real -- the book did not
+      move -- and dropping it would silently delete the calmest minutes from
+      every downstream analysis.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [symbol, bar_start]
+      # A range join against an interval table is exactly where a duplicated
+      # row appears if the intervals ever overlap. This is the tripwire.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: ref('slv_ohlcv_1m')
+          config:
+            severity: error
+    columns:
+      - name: bar_start
+        data_tests: [not_null]
+      - name: symbol
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_instrument')
+                field: symbol
+      - name: close_price
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                strictly: true
+      - name: time_weighted_spread_bps
+        description: Null where the book did not move within the minute. That is data, not a gap.
+      - name: usdcop_rate
+        description: >-
+          Resolved by range join on the FX validity interval. Null before the
+          first published rate; never null in the middle of the series, which
+          the singular test asserts.
+      - name: is_quote_gap
+        description: True when no quote update landed in this minute.
+
+  - name: fct_kline_reconciliation
+    description: >-
+      The only test in this project that compares two independently produced
+      answers rather than comparing our data to our own expectations: our
+      trade-derived candles against the venue's published ones. It is
+      therefore the only thing that can catch a dropped trade, a
+      double-counted one, or a trade binned into the wrong minute -- all of
+      which are perfectly self-consistent within our own data.
+    columns:
+      - name: reconciliation_status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [ok, unmatched, price_divergence, volume_divergence, count_divergence]
+      - name: volume_rel_diff
+        description: >-
+          Relative, not absolute. An absolute tolerance is meaningless across
+          instruments whose notional differs by four orders of magnitude.
+
+  - name: mart_symbol_daily
+    description: >-
+      Daily summary per instrument. Aggregated from fct_market_1m rather than
+      from the trades, so a daily number and the sum of its own intraday bars
+      cannot disagree -- a discrepancy there destroys trust in both.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [symbol, trading_date]
+    columns:
+      - name: trading_date
+        data_tests: [not_null]
+      - name: realised_volatility_annualised
+        description: >-
+          Annualised on 365 days, not 252. Crypto has no trading calendar, and
+          applying the equity convention understates it by roughly 20%.
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 50
+              config:
+                severity: warn
+      - name: minute_coverage_ratio
+        description: >-
+          Minutes with trades over 1440. Below one means either a quiet tape or
+          a gap in ingestion, and mart_pipeline_health is what tells them apart.
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: daily_return
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: -0.9
+                max_value: 5
+              config:
+                severity: warn
+
+  - name: mart_pipeline_health
+    description: >-
+      The platform's report on itself, one row per instrument-day. It exists
+      because Prometheus answers "is it broken now" with fifteen days of
+      retention, and the question actually asked is "was the third of March any
+      good" -- months later, when someone questions a number. Everything here
+      is derived from the data rather than from telemetry, so it survives a
+      monitoring wipe or a change of vendor.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [symbol, trading_date]
+    columns:
+      - name: quality_verdict
+        description: >-
+          One verdict per instrument-day so a consumer filters on one column
+          instead of learning six thresholds.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [good, incomplete, divergent, delayed, degraded_liquidity_view]
+      - name: duplicate_ratio
+        description: Replayed trades over total. The at-least-once tax, measured.
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 0.05
+              config:
+                severity: warn
+      - name: reconciliation_pass_ratio
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0.95
+                max_value: 1
+              config:
+                severity: warn
+
+  - name: mart_liquidity_ranking
+    description: >-
+      Trailing 1/7/30-day liquidity league table, and the analytical payoff of
+      the platform: it needs the trade tape for turnover, the quote tape for
+      spread, and silver's time weighting for the spread to mean anything.
+      Instrument-days the health mart does not call 'good' are excluded --
+      ranking on data known to be incomplete produces a confidently wrong
+      answer, which is worse than a gap.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [window_days, symbol]
+    columns:
+      - name: liquidity_score
+        description: >-
+          Turnover per basis point of spread. The cheapest single number that
+          separates "deep and tight" from merely "busy" -- a venue can have
+          enormous turnover in an instrument nobody can trade cheaply.
+      - name: window_days
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [1, 7, 30]
