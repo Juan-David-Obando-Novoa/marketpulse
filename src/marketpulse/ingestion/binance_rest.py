@@ -298,7 +298,7 @@ class BinanceRestClient:
         params: dict[str, Any] = {}
         if symbols:
             params["symbols"] = "[" + ",".join(f'"{s}"' for s in symbols) + "]"
-        return await self._get("/api/v3/exchangeInfo", params)  # type: ignore[no-any-return]
+        return await self._get("/api/v3/exchangeInfo", params)
 
     async def server_time_skew_ms(self) -> int:
         """Local clock minus venue clock, in milliseconds.

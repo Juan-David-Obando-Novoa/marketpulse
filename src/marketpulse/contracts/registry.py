@@ -188,7 +188,7 @@ class SchemaRegistryClient:
         return int(payload["id"])
 
     def latest(self, subject: str) -> dict[str, Any]:
-        return self._request("GET", f"/subjects/{subject}/versions/latest")  # type: ignore[no-any-return]
+        return self._request("GET", f"/subjects/{subject}/versions/latest")
 
     def check_compatibility(self, subject: str, schema: dict[str, Any]) -> bool:
         """True when ``schema`` may replace the latest version of ``subject``.

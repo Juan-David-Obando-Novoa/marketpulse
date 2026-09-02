@@ -23,7 +23,7 @@ from typing import Annotated, Any
 import typer
 
 from marketpulse.config import AppSettings, get_settings
-from marketpulse.contracts.models import BookTicker, FxRate, Kline, Trade
+from marketpulse.contracts.models import BookTicker, FxRate, Kline, MarketDataRecord, Trade
 from marketpulse.contracts.registry import (
     SchemaRegistryClient,
     SchemaRegistryError,
@@ -44,7 +44,7 @@ app = typer.Typer(
 log = get_logger(__name__)
 
 #: Logical stream -> contract model. One place to add a new stream.
-STREAM_MODELS: dict[str, type] = {
+STREAM_MODELS: dict[str, type[MarketDataRecord]] = {
     "trades": Trade,
     "book_ticker": BookTicker,
     "klines": Kline,

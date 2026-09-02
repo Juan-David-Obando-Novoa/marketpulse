@@ -85,7 +85,7 @@ def configure_logging(
 
 def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
     """Return a bound logger. Call after :func:`configure_logging`."""
-    return structlog.get_logger(name)  # type: ignore[no-any-return]
+    return structlog.get_logger(name)
 
 
 def bind_context(**kwargs: Any) -> None:

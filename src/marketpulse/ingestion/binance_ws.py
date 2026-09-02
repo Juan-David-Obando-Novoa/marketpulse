@@ -24,7 +24,7 @@ import asyncio
 import contextlib
 import json
 from collections.abc import AsyncIterator, Callable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from marketpulse.contracts.models import BookTicker, Trade
 from marketpulse.ingestion.normalizers import (
@@ -55,16 +55,20 @@ log = get_logger(__name__)
 MAX_STREAMS_PER_CONNECTION = 200
 
 
-class SocketLike:
-    """Structural type for the subset of a websocket we use.
+@runtime_checkable
+class SocketLike(Protocol):
+    """The slice of a websocket connection this module actually uses.
 
-    Not a Protocol because ``async for`` support is what matters and expressing
-    that structurally adds noise without adding safety here.
+    Declared explicitly so the fake in the tests is checked against the same
+    surface a real client has to provide, rather than against whatever the
+    test happened to need on the day it was written.
     """
 
-    async def __aiter__(self) -> AsyncIterator[str]: ...  # pragma: no cover
+    def __aiter__(self) -> AsyncIterator[str]:  # pragma: no cover
+        ...
 
-    async def close(self) -> None: ...  # pragma: no cover
+    async def close(self) -> None:  # pragma: no cover
+        ...
 
 
 def build_stream_url(base_url: str, stream_names: list[str]) -> str:

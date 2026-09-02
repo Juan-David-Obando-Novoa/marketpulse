@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import os
 import time
-from collections.abc import Iterator
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any
@@ -93,7 +93,7 @@ def get_gateway() -> TrinoGateway:
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> Iterator[None]:
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Set once here and read through a FastAPI dependency, which is the
     # framework's own idiom for process-wide state.
     global _gateway  # noqa: PLW0603
@@ -218,7 +218,7 @@ async def get_candles(  # noqa: PLR0917 - FastAPI declares its interface as para
     start: Annotated[datetime | None, Query(description="Inclusive, ISO 8601.")] = None,
     end: Annotated[datetime | None, Query(description="Exclusive, ISO 8601.")] = None,
     limit: Annotated[int, Query(ge=1, le=queries.MAX_PAGE_SIZE)] = 1_000,
-    response: Response = None,  # type: ignore[assignment]
+    response: Response | None = None,
 ) -> list[dict[str, Any]]:
     """One-minute bars over a half-open window.
 

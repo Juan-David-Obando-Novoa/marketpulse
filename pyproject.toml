@@ -139,8 +139,10 @@ module = [
     "pyspark.*",
     "fastavro.*",
     "trino.*",
-    "dagster.*",
     "pyiceberg.*",
+    "aiohttp.*",
+    "websockets.*",
+    "starlette.*",
 ]
 ignore_missing_imports = true
 
