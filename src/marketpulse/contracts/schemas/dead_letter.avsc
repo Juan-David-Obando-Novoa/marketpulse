@@ -1,0 +1,16 @@
+{
+  "type": "record",
+  "name": "DeadLetter",
+  "namespace": "io.marketpulse.ops",
+  "doc": "A message that failed validation or serialisation. Per ADR-0006 a bad payload degrades one message rather than the pipeline, and the dead-letter topic becomes the queryable record of upstream drift.",
+  "fields": [
+    {"name": "schema_version", "type": "int", "default": 1},
+    {"name": "origin_topic", "type": "string", "doc": "Topic the message would have been written to had it validated."},
+    {"name": "origin_stream", "type": ["null", "string"], "default": null, "doc": "Venue stream name, e.g. btcusdt@trade."},
+    {"name": "error_type", "type": "string", "doc": "Exception class name; low cardinality, safe to group by in Grafana."},
+    {"name": "error_message", "type": "string"},
+    {"name": "raw_payload", "type": "string", "doc": "Verbatim bytes as received, so the message can be replayed after a fix."},
+    {"name": "failed_at", "type": {"type": "long", "logicalType": "timestamp-millis"}},
+    {"name": "producer_id", "type": "string"}
+  ]
+}

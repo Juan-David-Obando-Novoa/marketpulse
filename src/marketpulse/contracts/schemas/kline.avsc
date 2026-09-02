@@ -1,0 +1,27 @@
+{
+  "type": "record",
+  "name": "Kline",
+  "namespace": "io.marketpulse.md",
+  "doc": "Venue-published OHLCV candle. Used for historical backfill and, critically, as the independent reference the platform reconciles its own trade-derived candles against.",
+  "fields": [
+    {"name": "schema_version", "type": "int", "default": 1},
+    {"name": "exchange", "type": "string", "default": "binance"},
+    {"name": "symbol", "type": "string"},
+    {"name": "interval", "type": "string", "doc": "Venue interval code: 1m, 5m, 1h, 1d."},
+    {"name": "open_time", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "Inclusive start of the candle window."},
+    {"name": "close_time", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "Inclusive end of the candle window; the venue reports the last millisecond, not the next open."},
+    {"name": "open", "type": {"type": "bytes", "logicalType": "decimal", "precision": 38, "scale": 18}},
+    {"name": "high", "type": {"type": "bytes", "logicalType": "decimal", "precision": 38, "scale": 18}},
+    {"name": "low", "type": {"type": "bytes", "logicalType": "decimal", "precision": 38, "scale": 18}},
+    {"name": "close", "type": {"type": "bytes", "logicalType": "decimal", "precision": 38, "scale": 18}},
+    {"name": "volume", "type": {"type": "bytes", "logicalType": "decimal", "precision": 38, "scale": 18}},
+    {"name": "quote_volume", "type": {"type": "bytes", "logicalType": "decimal", "precision": 38, "scale": 18}},
+    {"name": "trade_count", "type": "long"},
+    {"name": "taker_buy_base_volume", "type": {"type": "bytes", "logicalType": "decimal", "precision": 38, "scale": 18}},
+    {"name": "taker_buy_quote_volume", "type": {"type": "bytes", "logicalType": "decimal", "precision": 38, "scale": 18}},
+    {"name": "is_closed", "type": "boolean", "default": true, "doc": "False for the in-flight candle. Only closed candles are promoted past bronze."},
+    {"name": "ingested_at", "type": {"type": "long", "logicalType": "timestamp-millis"}},
+    {"name": "producer_id", "type": "string"},
+    {"name": "raw_payload", "type": ["null", "string"], "default": null}
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "type": "record",
+  "name": "BookTicker",
+  "namespace": "io.marketpulse.md",
+  "doc": "Best bid and offer snapshot. Emitted by the venue on every change to the top of book, which makes it a change stream rather than a sampled quote.",
+  "fields": [
+    {"name": "schema_version", "type": "int", "default": 1},
+    {"name": "exchange", "type": "string", "default": "binance"},
+    {"name": "symbol", "type": "string"},
+    {"name": "update_id", "type": "long", "doc": "Monotonic per symbol. A gap in this sequence means we dropped an update; the gap rate is a monitored quality metric."},
+    {"name": "bid_price", "type": {"type": "bytes", "logicalType": "decimal", "precision": 38, "scale": 18}},
+    {"name": "bid_quantity", "type": {"type": "bytes", "logicalType": "decimal", "precision": 38, "scale": 18}},
+    {"name": "ask_price", "type": {"type": "bytes", "logicalType": "decimal", "precision": 38, "scale": 18}},
+    {"name": "ask_quantity", "type": {"type": "bytes", "logicalType": "decimal", "precision": 38, "scale": 18}},
+    {"name": "event_time", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "Venue envelope timestamp; falls back to ingestion time on the streams where the venue omits it."},
+    {"name": "ingested_at", "type": {"type": "long", "logicalType": "timestamp-millis"}},
+    {"name": "producer_id", "type": "string"},
+    {"name": "raw_payload", "type": ["null", "string"], "default": null}
+  ]
+}

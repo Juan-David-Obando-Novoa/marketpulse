@@ -1,0 +1,21 @@
+{
+  "type": "record",
+  "name": "Trade",
+  "namespace": "io.marketpulse.md",
+  "doc": "A single executed trade printed on a public exchange tape. Immutable: an exchange never restates a trade, it publishes a cancellation as a separate event.",
+  "fields": [
+    {"name": "schema_version", "type": "int", "default": 1, "doc": "Incremented on every backward-compatible change so consumers can branch without inspecting the registry."},
+    {"name": "exchange", "type": "string", "default": "binance", "doc": "Venue identifier. Part of the natural key; the same trade_id is reused across venues."},
+    {"name": "symbol", "type": "string", "doc": "Exchange-native instrument symbol, upper case, e.g. BTCUSDT."},
+    {"name": "trade_id", "type": "long", "doc": "Venue-assigned trade identifier. Unique per (exchange, symbol) and the third component of the natural key."},
+    {"name": "price", "type": {"type": "bytes", "logicalType": "decimal", "precision": 38, "scale": 18}, "doc": "Execution price. Decimal, never float: binary floating point cannot represent 0.1 and money is not a physics problem."},
+    {"name": "quantity", "type": {"type": "bytes", "logicalType": "decimal", "precision": 38, "scale": 18}, "doc": "Executed size in base asset units."},
+    {"name": "quote_quantity", "type": ["null", {"type": "bytes", "logicalType": "decimal", "precision": 38, "scale": 18}], "default": null, "doc": "price * quantity, computed at the edge so downstream engines agree on rounding."},
+    {"name": "buyer_is_maker", "type": "boolean", "doc": "True when the buyer was the resting order, which makes this a sell-side aggression. Drives order-flow imbalance in the gold layer."},
+    {"name": "trade_time", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "Exchange matching-engine timestamp. This is the event time used for partitioning and windowing."},
+    {"name": "event_time", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "Timestamp the venue stamped on the websocket envelope. Differs from trade_time by the venue's internal fan-out latency."},
+    {"name": "ingested_at", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "When our producer accepted the message. event_time minus this is the observed end-to-end lag."},
+    {"name": "producer_id", "type": "string", "doc": "Identity of the producing process, so a duplicate storm can be traced to a replica."},
+    {"name": "raw_payload", "type": ["null", "string"], "default": null, "doc": "Verbatim source JSON, retained in bronze per ADR-0003 so that a parsing bug is recoverable without re-fetching from the venue."}
+  ]
+}

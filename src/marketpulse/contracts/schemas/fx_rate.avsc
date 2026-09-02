@@ -1,0 +1,18 @@
+{
+  "type": "record",
+  "name": "FxRate",
+  "namespace": "io.marketpulse.ref",
+  "doc": "Official reference exchange rate with an explicit validity interval. Modelled as a bitemporal fact: valid_from/valid_to is business time, ingested_at is system time.",
+  "fields": [
+    {"name": "schema_version", "type": "int", "default": 1},
+    {"name": "source", "type": "string", "doc": "Publishing authority, e.g. banrep-trm."},
+    {"name": "base_currency", "type": "string", "doc": "ISO 4217, e.g. USD."},
+    {"name": "quote_currency", "type": "string", "doc": "ISO 4217, e.g. COP."},
+    {"name": "rate", "type": {"type": "bytes", "logicalType": "decimal", "precision": 38, "scale": 18}, "doc": "Units of quote currency per one unit of base currency."},
+    {"name": "valid_from", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "Inclusive start of the interval this rate applies to."},
+    {"name": "valid_to", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "Exclusive end. The publisher extends this across weekends and holidays, which is why the interval is stored rather than a single date."},
+    {"name": "ingested_at", "type": {"type": "long", "logicalType": "timestamp-millis"}},
+    {"name": "producer_id", "type": "string"},
+    {"name": "raw_payload", "type": ["null", "string"], "default": null}
+  ]
+}
