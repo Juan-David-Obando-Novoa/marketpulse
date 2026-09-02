@@ -312,10 +312,13 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
 
   dagster-daemon:
-    build:
-      context: .
-      dockerfile: docker/app/Dockerfile
-      target: orchestration
+    # Deliberately no build block. The webserver and the daemon are the same
+    # image running two different commands, and two services that both declare
+    # a build for one tag are built in parallel by buildx -- the second export
+    # then fails with 'image already exists'. The webserver owns the build; the
+    # daemon depends on it, so by the time this container is created the image
+    # is there. The consequence is that `up dagster-daemon` on its own tries to
+    # pull; bring the orchestration profile up as a whole.
     image: marketpulse/orchestration:0.1.0
     container_name: mp-dagster-daemon
     profiles: [orchestration]
