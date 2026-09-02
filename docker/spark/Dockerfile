@@ -8,12 +8,18 @@
 # here makes the runtime reproducible instead of dependent on what Maven
 # Central serves that morning.
 # ---------------------------------------------------------------------------
-FROM apache/spark:3.5.3-scala2.12-java11-python3-ubuntu
+# java17, not java11, and this is the load-bearing part of the tag: the java11
+# variants are built on Ubuntu focal, whose python3 is 3.8 -- end of life since
+# October 2024, and older than both builtin generic subscripting and the
+# `str | None` union syntax that pydantic evaluates at runtime. The java17
+# variants are built on eclipse-temurin:17-jammy, so python3 is 3.10, which is
+# exactly what pyproject declares. Spark 3.5 supports Java 17 natively.
+FROM apache/spark:3.5.9-scala2.12-java17-python3-ubuntu
 
 USER root
 
 ARG ICEBERG_VERSION=1.9.2
-ARG SPARK_VERSION=3.5.3
+ARG SPARK_VERSION=3.5.9
 ARG SCALA_VERSION=2.12
 ARG HADOOP_AWS_VERSION=3.3.4
 ARG AWS_SDK_VERSION=1.12.262
@@ -50,37 +56,11 @@ RUN set -eux; \
     curl -fsSL -o "${SPARK_JARS}/aws-java-sdk-bundle.jar" \
       "${MAVEN}/com/amazonaws/aws-java-sdk-bundle/${AWS_SDK_VERSION}/aws-java-sdk-bundle-${AWS_SDK_VERSION}.jar"
 
-# ---------------------------------------------------------------------------
-# Python runtime.
-#
-# Spark 3.5's Ubuntu image is built on focal and ships Python 3.8, which
-# reached end of life in October 2024 and predates both builtin generic
-# subscripting (3.9) and the union syntax `str | None` (3.10). pydantic
-# evaluates annotations at runtime, so the settings module fails to import
-# there outright.
-#
-# pyproject declares requires-python >= 3.10. Contorting the whole codebase
-# back to an EOL interpreter to satisfy one base image would be the wrong
-# direction, so the image provides the runtime the project declares instead.
-# Spark 3.5 supports CPython through 3.11.
-# ---------------------------------------------------------------------------
-ARG PYTHON_VERSION=3.11
-RUN set -eux; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends software-properties-common; \
-    add-apt-repository -y ppa:deadsnakes/ppa; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends \
-        "python${PYTHON_VERSION}" "python${PYTHON_VERSION}-distutils"; \
-    curl -fsSL https://bootstrap.pypa.io/get-pip.py | "python${PYTHON_VERSION}"; \
-    apt-get purge -y --auto-remove software-properties-common; \
-    rm -rf /var/lib/apt/lists/*
-
-# Both must be set: the driver and the executors each pick their interpreter
-# from these, and a mismatch between them fails at task deserialisation with an
-# error that names neither variable.
-ENV PYSPARK_PYTHON=/usr/bin/python3.11 \
-    PYSPARK_DRIVER_PYTHON=/usr/bin/python3.11
+# Both are set explicitly. The driver and the executors each pick their
+# interpreter from these independently, and a mismatch surfaces at task
+# deserialisation with an error that names neither variable.
+ENV PYSPARK_PYTHON=/usr/bin/python3 \
+    PYSPARK_DRIVER_PYTHON=/usr/bin/python3
 
 COPY docker/spark/spark-defaults.conf /opt/spark/conf/spark-defaults.conf
 COPY docker/spark/log4j2.properties /opt/spark/conf/log4j2.properties
@@ -95,7 +75,7 @@ COPY docker/spark/log4j2.properties /opt/spark/conf/log4j2.properties
 # scripts, since jobs are submitted as file paths.
 COPY pyproject.toml README.md /opt/marketpulse/
 COPY src /opt/marketpulse/src
-RUN python3.11 -m pip install --no-cache-dir \
+RUN python3 -m pip install --no-cache-dir \
         "pydantic>=2.7,<3" "pydantic-settings>=2.3,<3" \
         "structlog>=24.1" "fastavro>=1.9" "orjson>=3.10" "prometheus-client>=0.20"
 

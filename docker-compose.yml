@@ -197,7 +197,7 @@ services:
     build:
       context: .
       dockerfile: docker/spark/Dockerfile
-    image: marketpulse/spark:3.5.3
+    image: marketpulse/spark:3.5.9
     container_name: mp-spark
     profiles: [processing]
     depends_on:
