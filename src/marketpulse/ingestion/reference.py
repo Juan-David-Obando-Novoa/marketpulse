@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from marketpulse.logging import get_logger
@@ -63,7 +63,11 @@ def extract_filters(symbol_payload: dict[str, Any]) -> dict[str, Decimal | None]
             return None
         try:
             return Decimal(str(entry[key]))
-        except (TypeError, ValueError):
+        except (InvalidOperation, TypeError, ValueError):
+            # InvalidOperation is an ArithmeticError, NOT a ValueError, so a
+            # `except ValueError` here would not catch it -- which is how a
+            # single malformed filter value would have taken down the whole
+            # reference sync.
             return None
 
     return {
