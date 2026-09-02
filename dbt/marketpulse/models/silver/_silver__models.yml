@@ -99,10 +99,13 @@ models:
         description: >-
           Milliseconds this quote was the prevailing top of book. Null on the
           most recent quote per symbol, which has no successor yet.
-      - name: missed_updates_before
+      - name: book_updates_between
         description: >-
-          Gap in the venue's monotonic sequence immediately before this quote.
-          Non-zero means updates the venue sent that we never received.
+          Order-book updates the venue processed between this quote and the
+          previous one. NOT lost messages: the venue's id counts book changes
+          at every depth, while a top-of-book message is only emitted when the
+          touch moves, so a liquid instrument skips tens of ids routinely.
+          Read it as depth churn that did not move the best bid or ask.
         data_tests:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments:
@@ -202,8 +205,10 @@ models:
               arguments:
                 min_value: 0
                 max_value: 1
-      - name: missed_updates
-        description: Book updates lost in this minute. The only place this is visible in the warehouse.
+      - name: book_updates_skipped
+        description: >-
+          Book churn in this minute that never moved the touch. An activity
+          measure, not a loss measure.
 
   # -------------------------------------------------------------------------
   - name: slv_fx_rates

@@ -106,11 +106,14 @@ alert fires on *time since the last message* rather than on a rate. Because
 crypto trades continuously, a quiet feed is always a fault and never a weekend,
 which is what makes that rule safe to page on.
 
-**Some data loss is reported as success by every component involved.** The
-venue's `update_id` is monotonic per symbol; a gap means updates were sent that
-we never received — while the socket was fine, the producer succeeded, Kafka
-acknowledged and Spark committed. A sequence tracker turns that into a counter
-and carries it all the way into the warehouse.
+**An upstream field means what the venue says it means, not what its name
+suggests.** The bookTicker `update_id` looked like a per-message counter, so an
+early version treated gaps in it as lost messages. Running the platform proved
+otherwise within a minute: it is the *order book's* update id, advancing at
+every depth, while a top-of-book message is only emitted when the touch moves —
+so gaps are constant and normal. The tracker now counts what the id genuinely
+supports (regressions, which are real faults) and reports the gap as book churn,
+which is information rather than an alarm.
 
 **Exactly-once is not worth what it costs here.** The platform is
 at-least-once end to end with deterministic natural keys, and deduplication is

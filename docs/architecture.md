@@ -158,13 +158,25 @@ rather than on a rate (`docker/prometheus/alerts.yml`). Crypto venues trade
 continuously, so a quiet feed is always a fault and never a weekend — which is
 what makes that rule safe to page on.
 
-### Loss that every component reports as success
+### An upstream field means what the venue says, not what its name suggests
 
-The venue's `update_id` is monotonic per symbol. A gap means updates the venue
-sent that we never received. Nothing else in the stack can see this: the
-socket is fine, the producer succeeded, Kafka acknowledged, Spark committed.
-`SequenceTracker` (`ingestion/normalizers.py`) turns it into a counter, and
-`slv_quote_metrics_1m.missed_updates` carries it into the warehouse.
+`bookTicker.u` reads like a per-message counter. It is not: it is the *order
+book's* update id, which advances on every change at every depth, while a
+top-of-book message is only emitted when the best bid or ask actually moves. On
+a liquid instrument consecutive quotes therefore skip tens of ids.
+
+An early version of this platform treated those gaps as lost messages. It
+produced a warning per message and an alert that fired continuously from the
+first minute of real data — the fastest possible refutation, and one no amount
+of code review would have produced.
+
+`SequenceTracker` (`ingestion/normalizers.py`) now reports what the id
+genuinely supports: **regressions**, since the id is monotonic and a
+non-advancing one is a replay or out-of-order delivery, and **span** as
+information — book churn that never moved the touch, carried into the warehouse
+as `book_updates_skipped`. Message loss on this stream is simply not observable
+from the id; it shows up as a coverage gap in silver, where a minute with no
+quotes is visible as such.
 
 ### Money is not a physics problem
 

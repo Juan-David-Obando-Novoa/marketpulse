@@ -155,10 +155,41 @@ async def test_crossed_quote_is_dead_lettered_with_its_origin_stream() -> None:
     )
 
 
-async def test_venue_sequence_gap_is_counted() -> None:
+async def test_a_jump_in_the_venue_id_is_not_treated_as_a_fault() -> None:
+    """The bug this replaced.
+
+    Binance's bookTicker `u` is the ORDER BOOK update id: it advances on every
+    change at every depth, while a top-of-book message is only emitted when the
+    touch actually moves. Consecutive quotes therefore skip tens of ids on a
+    liquid instrument, and reading that as lost messages produced a warning per
+    message and an alert that fired continuously from the first minute.
+    """
     frames = [
         _frame("btcusdt@bookTicker", {**BOOK_TICKER_PAYLOAD, "u": 100}),
-        _frame("btcusdt@bookTicker", {**BOOK_TICKER_PAYLOAD, "u": 104}),
+        _frame("btcusdt@bookTicker", {**BOOK_TICKER_PAYLOAD, "u": 140}),
+    ]
+    connect = ScriptedConnect([FakeSocket(frames)])
+    feed, producer, metrics = _build(connect)
+
+    await _run_briefly(feed)
+
+    assert producer.topics()[:2] == ["md.book_ticker.v1", "md.book_ticker.v1"]
+    assert (
+        _counter(
+            metrics,
+            "marketpulse_sequence_regressions_total",
+            source="binance",
+            symbol="BTCUSDT",
+        )
+        == 0.0
+    )
+
+
+async def test_a_non_advancing_venue_id_is_counted_as_a_regression() -> None:
+    """What the id genuinely supports: it is monotonic, so this is a real fault."""
+    frames = [
+        _frame("btcusdt@bookTicker", {**BOOK_TICKER_PAYLOAD, "u": 100}),
+        _frame("btcusdt@bookTicker", {**BOOK_TICKER_PAYLOAD, "u": 100}),
     ]
     connect = ScriptedConnect([FakeSocket(frames)])
     feed, _, metrics = _build(connect)
@@ -166,8 +197,13 @@ async def test_venue_sequence_gap_is_counted() -> None:
     await _run_briefly(feed)
 
     assert (
-        _counter(metrics, "marketpulse_sequence_gaps_total", source="binance", symbol="BTCUSDT")
-        == 3.0
+        _counter(
+            metrics,
+            "marketpulse_sequence_regressions_total",
+            source="binance",
+            symbol="BTCUSDT",
+        )
+        == 1.0
     )
 
 
@@ -233,7 +269,12 @@ async def test_sequence_state_is_reset_across_a_reconnect() -> None:
     await asyncio.wait_for(task, timeout=2.0)
 
     assert (
-        _counter(metrics, "marketpulse_sequence_gaps_total", source="binance", symbol="BTCUSDT")
+        _counter(
+            metrics,
+            "marketpulse_sequence_regressions_total",
+            source="binance",
+            symbol="BTCUSDT",
+        )
         == 0.0
     )
 

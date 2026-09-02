@@ -14,6 +14,7 @@ only honest way to test an integration you do not control.
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -24,6 +25,7 @@ from marketpulse.utils.timeutil import epoch_millis_to_datetime, utc_now
 __all__ = [
     "EXCHANGE",
     "NormalizationError",
+    "SequenceObservation",
     "SequenceTracker",
     "normalise_book_ticker",
     "normalise_rest_kline",
@@ -258,17 +260,42 @@ def normalise_rest_kline(
     )
 
 
+@dataclass(frozen=True, slots=True)
+class SequenceObservation:
+    """What a venue update id tells us, and what it does not."""
+
+    #: Order-book updates the venue processed between this top-of-book message
+    #: and the previous one. Normal and often large -- see SequenceTracker.
+    span: int
+    #: The id did not advance. A replay, or genuinely out of order.
+    regressed: bool
+    #: First message seen for this symbol; nothing to compare against.
+    first_seen: bool
+
+
 class SequenceTracker:
-    """Detect gaps in a venue's monotonic per-symbol update sequence.
+    """Track the venue's per-symbol update id, and interpret it correctly.
 
-    The venue guarantees ``update_id`` increases by at least one per message
-    for a symbol. A jump larger than one means messages were dropped somewhere
-    between the matching engine and us -- and unlike a disconnect, this failure
-    is completely silent. Counting it turns "the data looks a bit thin" into a
-    number on a dashboard.
+    The subtle part, and one this project originally got wrong: for the
+    bookTicker stream Binance's ``u`` is the **order book** update id, not a
+    counter of top-of-book messages. The book changes at every depth level,
+    while a top-of-book message is only emitted when the best bid or ask
+    actually moves -- so consecutive messages routinely differ by tens of ids
+    on a liquid instrument. Treating that difference as lost messages produces
+    a constant stream of false alarms, which is exactly what it did.
 
-    Out-of-order and replayed ids (which a reconnect produces) are reported as
-    duplicates rather than gaps, so a reconnect does not masquerade as loss.
+    What the id genuinely supports:
+
+    * **Regressions.** ``u`` is monotonic per symbol, so an id that does not
+      advance is a replay or an out-of-order delivery. That is a real fault and
+      is worth a counter.
+    * **Span**, as information rather than as an error: how much book churn
+      happened without moving the touch. Useful for characterising an
+      instrument; never a loss signal.
+
+    Message loss on this stream is simply not observable from the id. It shows
+    up instead as a coverage gap in the silver layer, where a minute with no
+    quotes is visible as such.
     """
 
     __slots__ = ("_last",)
@@ -276,20 +303,23 @@ class SequenceTracker:
     def __init__(self) -> None:
         self._last: dict[str, int] = {}
 
-    def observe(self, symbol: str, update_id: int) -> int:
-        """Return the number of missed updates implied by ``update_id``.
-
-        Returns ``0`` for the first observation of a symbol, for a contiguous
-        increment, and for any non-advancing id.
-        """
+    def observe(self, symbol: str, update_id: int) -> SequenceObservation:
+        """Record ``update_id`` for ``symbol`` and describe what it implies."""
         previous = self._last.get(symbol)
-        self._last[symbol] = max(update_id, previous) if previous is not None else update_id
-        if previous is None or update_id <= previous:
-            return 0
-        return update_id - previous - 1
+        if previous is None:
+            self._last[symbol] = update_id
+            return SequenceObservation(span=0, regressed=False, first_seen=True)
+
+        if update_id <= previous:
+            # High-water mark never regresses, so a reconnect's replay does not
+            # make every subsequent message look out of order.
+            return SequenceObservation(span=0, regressed=True, first_seen=False)
+
+        self._last[symbol] = update_id
+        return SequenceObservation(span=update_id - previous - 1, regressed=False, first_seen=False)
 
     def reset(self, symbol: str | None = None) -> None:
-        """Forget state after a reconnect, where a gap is expected and uninformative."""
+        """Forget state after a reconnect, where a replay is expected."""
         if symbol is None:
             self._last.clear()
         else:

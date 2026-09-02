@@ -272,12 +272,14 @@ class BinanceMarketDataFeed:
             received_at=received_at,
             keep_raw=self._keep_raw,
         )
-        missed = self._sequences.observe(ticker.symbol, ticker.update_id)
-        if missed:
-            # The venue's update_id is monotonic per symbol; a jump means the
-            # venue sent updates we never saw. Silent loss, made countable.
-            self._metrics.sequence_gaps.labels(source=EXCHANGE, symbol=ticker.symbol).inc(missed)
-            log.warning("feed.sequence_gap", symbol=ticker.symbol, missed=missed)
+        sequence = self._sequences.observe(ticker.symbol, ticker.update_id)
+        if sequence.regressed:
+            # Monotonic per symbol, so a non-advancing id is a replay or an
+            # out-of-order delivery. Rare, and worth knowing about.
+            self._metrics.sequence_regressions.labels(source=EXCHANGE, symbol=ticker.symbol).inc()
+            log.warning(
+                "feed.sequence_regression", symbol=ticker.symbol, update_id=ticker.update_id
+            )
         self._metrics.observe_lag(EXCHANGE, kind, ticker.lag_millis())
         self._publisher.publish("book_ticker", ticker)
 

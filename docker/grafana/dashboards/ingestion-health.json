@@ -1079,8 +1079,8 @@
     },
     {
       "type": "timeseries",
-      "title": "Venue sequence gaps",
-      "description": "Book updates the venue sent that we never received. Silent loss: every component involved reported success.",
+      "title": "Venue sequence regressions",
+      "description": "Update ids that did not advance: replays or out-of-order delivery. Not a loss metric -- the venue's id counts book changes at every depth, so gaps between top-of-book messages are normal.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -1097,7 +1097,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (symbol) (increase(marketpulse_sequence_gaps_total[5m]))",
+          "expr": "sum by (symbol) (increase(marketpulse_sequence_regressions_total[5m]))",
           "legendFormat": "{{symbol}}",
           "refId": "A",
           "instant": false,

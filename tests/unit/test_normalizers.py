@@ -206,38 +206,54 @@ def test_column_order_mistake_is_caught_by_the_ohlc_invariant() -> None:
 # --------------------------------------------------------------------------
 # Sequence tracking
 # --------------------------------------------------------------------------
-def test_first_observation_reports_no_gap() -> None:
-    assert SequenceTracker().observe("BTCUSDT", 1_000) == 0
+def test_first_observation_has_nothing_to_compare_against() -> None:
+    observation = SequenceTracker().observe("BTCUSDT", 1_000)
+    assert observation.first_seen
+    assert observation.span == 0
+    assert not observation.regressed
 
 
-def test_contiguous_ids_report_no_gap() -> None:
+def test_contiguous_ids_report_no_span() -> None:
     tracker = SequenceTracker()
-    assert [tracker.observe("BTCUSDT", i) for i in range(10, 15)] == [0, 0, 0, 0, 0]
+    tracker.observe("BTCUSDT", 10)
+    assert [tracker.observe("BTCUSDT", i).span for i in range(11, 15)] == [0, 0, 0, 0]
 
 
-def test_gap_size_is_the_number_of_missed_updates() -> None:
+def test_a_jump_is_book_churn_and_not_an_error() -> None:
+    """The bug this replaced: `u` counts book updates at every depth, so a jump
+    between top-of-book messages is normal on a liquid instrument. It is
+    reported as a span, and nothing treats it as a fault."""
     tracker = SequenceTracker()
     tracker.observe("BTCUSDT", 100)
-    assert tracker.observe("BTCUSDT", 105) == 4
+    observation = tracker.observe("BTCUSDT", 130)
+    assert observation.span == 29
+    assert not observation.regressed
 
 
-def test_replayed_ids_are_not_counted_as_loss() -> None:
-    """A reconnect replays. Counting that as a gap would invert the metric."""
+def test_a_non_advancing_id_is_a_regression() -> None:
     tracker = SequenceTracker()
     tracker.observe("BTCUSDT", 100)
-    assert tracker.observe("BTCUSDT", 98) == 0
-    assert tracker.observe("BTCUSDT", 100) == 0
-    assert tracker.observe("BTCUSDT", 101) == 0, "high-water mark must not regress"
+    assert tracker.observe("BTCUSDT", 98).regressed
+    assert tracker.observe("BTCUSDT", 100).regressed
+
+
+def test_the_high_water_mark_never_moves_backwards() -> None:
+    """Otherwise one replayed message makes every later one look out of order."""
+    tracker = SequenceTracker()
+    tracker.observe("BTCUSDT", 100)
+    tracker.observe("BTCUSDT", 98)
+    assert not tracker.observe("BTCUSDT", 101).regressed
+    assert tracker.observe("BTCUSDT", 101).regressed, "101 is now the mark"
 
 
 def test_symbols_are_tracked_independently() -> None:
     tracker = SequenceTracker()
     tracker.observe("BTCUSDT", 500)
-    assert tracker.observe("ETHUSDT", 900_000) == 0
+    assert tracker.observe("ETHUSDT", 900_000).first_seen
 
 
 def test_reset_clears_state_for_a_reconnect() -> None:
     tracker = SequenceTracker()
     tracker.observe("BTCUSDT", 100)
     tracker.reset()
-    assert tracker.observe("BTCUSDT", 5_000) == 0
+    assert tracker.observe("BTCUSDT", 5_000).first_seen

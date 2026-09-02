@@ -78,7 +78,7 @@ final as (
         dup.trades,
         dup.replayed_trades,
         cast(dup.replayed_trades / nullif(dup.trades, 0) as decimal(9, 6)) as duplicate_ratio,
-        d.missed_book_updates,
+        d.book_updates_skipped,
 
         -- Timeliness
         dup.mean_ingestion_lag_ms,

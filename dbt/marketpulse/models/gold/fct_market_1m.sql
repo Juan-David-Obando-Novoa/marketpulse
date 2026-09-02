@@ -88,7 +88,7 @@ joined as (
         q.mean_touch_imbalance,
         q.quote_count,
         q.quote_coverage_ratio,
-        q.missed_updates,
+        q.book_updates_skipped,
 
         -- Local-currency conversion via a range join on the validity interval.
         -- This is why fx rates are stored as intervals rather than daily

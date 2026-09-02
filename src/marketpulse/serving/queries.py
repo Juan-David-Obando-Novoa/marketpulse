@@ -140,7 +140,7 @@ def quality_report(*, symbol: str | None, days: int) -> Query:
                 duplicate_ratio,
                 p99_ingestion_lag_ms,
                 quote_gap_minutes,
-                missed_book_updates
+                book_updates_skipped
             from lakehouse.gold.mart_pipeline_health
             where (? is null or symbol = ?)
               and trading_date >= current_date - interval '1' day * ?

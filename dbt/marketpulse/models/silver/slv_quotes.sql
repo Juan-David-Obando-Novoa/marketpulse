@@ -52,12 +52,15 @@ with_duration as (
             order by event_time, update_id
         ) as next_event_time,
 
-        -- The venue's sequence is monotonic per symbol; the difference from
-        -- the previous id minus one is exactly how many updates we missed.
+        -- Order-book updates the venue processed between this top-of-book
+        -- message and the previous one. NOT lost messages: `u` is the book's
+        -- update id and the book changes at every depth, while a top-of-book
+        -- message is only emitted when the touch actually moves. A liquid
+        -- instrument routinely skips tens of ids between quotes.
         update_id - lag(update_id) over (
             partition by exchange_id, symbol
             order by update_id
-        ) - 1 as missed_updates_before
+        ) - 1 as book_updates_between
 
     from deduplicated
 
@@ -85,7 +88,7 @@ final as (
         -- final quote of a partition, which has no successor yet.
         date_diff('millisecond', event_time, next_event_time) as prevailing_ms,
 
-        coalesce(missed_updates_before, 0) as missed_updates_before,
+        greatest(coalesce(book_updates_between, 0), 0) as book_updates_between,
 
         cast({{ marketpulse.floor_to_bar('event_time', 1) }} as timestamp(6)) as bar_start_1m,
 

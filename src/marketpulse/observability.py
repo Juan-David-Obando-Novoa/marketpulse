@@ -79,10 +79,13 @@ class IngestionMetrics:
             labelnames=("source", "reason"),
             registry=self.registry,
         )
-        self.sequence_gaps = Counter(
-            "marketpulse_sequence_gaps_total",
-            "Detected gaps in a venue's monotonic update sequence. "
-            "Non-zero means we lost messages the venue believes it sent.",
+        self.sequence_regressions = Counter(
+            "marketpulse_sequence_regressions_total",
+            "Venue update ids that did not advance: a replay or an "
+            "out-of-order delivery. Should be zero outside reconnects. "
+            "Note this is NOT a message-loss metric -- for the bookTicker "
+            "stream the id counts order-book updates at every depth, so a "
+            "jump between consecutive top-of-book messages is normal.",
             labelnames=("source", "symbol"),
             registry=self.registry,
         )

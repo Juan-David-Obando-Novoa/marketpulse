@@ -71,7 +71,7 @@ daily as (
 
         -- Quality, carried forward so a consumer never has to go looking.
         sum(cast(is_quote_gap as integer))               as quote_gap_minutes,
-        sum(missed_updates)                              as missed_book_updates,
+        sum(book_updates_skipped)                        as book_updates_skipped,
         max(max_ingestion_lag_ms)                        as max_ingestion_lag_ms
 
     from minutes

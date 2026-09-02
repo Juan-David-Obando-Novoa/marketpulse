@@ -67,9 +67,10 @@ aggregated as (
         avg(touch_imbalance)                                as mean_touch_imbalance,
         max_by(mid_price, event_time)                       as closing_mid_price,
 
-        -- Updates the venue sent that we never received. The only place in the
-        -- warehouse this is visible.
-        sum(missed_updates_before)                          as missed_updates
+        -- Book churn that never moved the touch. An activity measure, not a
+        -- loss measure: high values mean depth was busy while the best bid and
+        -- ask held.
+        sum(book_updates_between)                           as book_updates_skipped
 
     from quotes
     group by 1, 2, 3

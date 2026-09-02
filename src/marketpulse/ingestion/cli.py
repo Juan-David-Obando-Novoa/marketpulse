@@ -62,7 +62,12 @@ STREAM_MODELS: dict[str, type[MarketDataRecord]] = {
 #: DLQ is bound lazily by the publisher, but its contract has consumers too --
 #: leaving it unregistered means the one topic you read during an incident is
 #: the one with no schema in the registry.
-ALL_MODELS: dict[str, type[MarketDataRecord]] = {**STREAM_MODELS, "dead_letter": DeadLetter}
+# DeadLetter is an envelope, not a market-data record, so it does not share
+# MarketDataRecord's base -- but it does carry a contract that needs registering.
+ALL_MODELS: dict[str, type[MarketDataRecord] | type[DeadLetter]] = {
+    **STREAM_MODELS,
+    "dead_letter": DeadLetter,
+}
 
 
 def _producer_id() -> str:

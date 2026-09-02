@@ -143,31 +143,37 @@ Nothing is lost while the DLQ retains them (7 days).
 
 ---
 
-## VenueSequenceGaps
+## VenueSequenceRegressions
 
-> More than 100 missing book updates for a symbol in fifteen minutes.
+> A symbol's venue update id repeatedly failed to advance.
 
-**What it means.** The venue's `update_id` sequence has holes: updates were sent
-that we never received. This is silent loss — the socket is fine, the producer
-succeeded, Kafka acknowledged, Spark committed. Every component reports success.
+**What it means.** The venue's `update_id` is monotonic per symbol, so an id
+that does not move forward is a replay or an out-of-order delivery.
 
-**Causes:**
+**What it does NOT mean.** It is not a message-loss metric, and there is
+deliberately no alert on *gaps* in that id. For the bookTicker stream `u` is
+the order book's update id: it advances at every depth while a top-of-book
+message is only emitted when the touch moves, so gaps between consecutive
+quotes are normal and constant. An earlier version of this platform alerted on
+them and fired continuously from the first minute of real data.
 
-1. **Backpressure inside the websocket client.** The venue drops messages for a
-   slow consumer. Check `marketpulse_producer_queue_depth`: if it is elevated,
-   we are the slow consumer.
-2. **Genuine venue-side loss.** Rare, and usually correlates with a venue status
-   incident.
-3. **A reconnect.** Sequence state is reset across reconnects specifically so
-   this does *not* fire spuriously — if it fires alongside reconnects anyway,
-   the reset is not working and that is a bug.
+**Diagnose:**
 
-**Consequence.** Quote-derived metrics for the affected minutes are
-under-measured. `slv_quote_metrics_1m.quote_coverage_ratio` will show it, and
-`mart_pipeline_health` flags the day as `degraded_liquidity_view`. There is no
-backfill: the venue does not offer historical book updates.
+```bash
+curl -s localhost:9108/metrics | grep marketpulse_sequence_regressions_total
+docker compose logs --tail=100 producer | grep sequence_regression
+```
 
----
+A burst right after a reconnect is expected and self-resolving — the tracker
+resets its high-water mark, but a replay in flight can still land. Sustained
+regressions with no reconnects mean messages are genuinely arriving out of
+order, which on a single-partition-per-symbol topic points at the producer, not
+the broker.
+
+**Where loss would actually show.** `slv_quote_metrics_1m.quote_coverage_ratio`
+below 1 for a minute means we held no quote for part of it, and
+`mart_pipeline_health` flags the day `degraded_liquidity_view`. That is the
+signal to trust.
 
 ## RateLimited
 

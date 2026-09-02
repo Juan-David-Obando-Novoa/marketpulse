@@ -54,17 +54,23 @@ groups:
             bad message. Inspect md.dead_letter.v1.
           runbook: docs/runbook.md#deadletterrateelevated
 
-      - alert: VenueSequenceGaps
-        expr: sum by (symbol) (increase(marketpulse_sequence_gaps_total[15m])) > 100
+      # Deliberately NOT an alert on gaps in the venue's update id. That id
+      # counts order-book changes at every depth, so gaps between top-of-book
+      # messages are normal and constant -- an earlier version of this rule
+      # fired continuously from the first minute. A regression is the part that
+      # is genuinely anomalous.
+      - alert: VenueSequenceRegressions
+        expr: sum by (symbol) (increase(marketpulse_sequence_regressions_total[15m])) > 50
         for: 15m
         labels:
           severity: warning
         annotations:
-          summary: "Losing book updates for {{ $labels.symbol }}"
+          summary: "Out-of-order book updates for {{ $labels.symbol }}"
           description: >-
-            The venue's update_id sequence has holes: messages were sent that
-            we never received. Every component involved reports success.
-          runbook: docs/runbook.md#venuesequencegaps
+            The venue's update id stopped advancing repeatedly. Expected in a
+            small burst after a reconnect; sustained, it means messages are
+            arriving out of order.
+          runbook: docs/runbook.md#venuesequenceregressions
 
       - alert: ProducerBackpressure
         expr: marketpulse_producer_queue_depth > 100000
