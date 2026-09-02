@@ -99,10 +99,15 @@ class Trade(MarketDataRecord):
     trade_time: datetime
     event_time: datetime
 
-    @field_validator("symbol", "exchange")
+    @field_validator("symbol")
     @classmethod
     def _upper(cls, value: str) -> str:
-        return value.upper() if value.isascii() else value
+        return value.upper()
+
+    @field_validator("exchange")
+    @classmethod
+    def _lower(cls, value: str) -> str:
+        return value.lower()
 
     @field_validator("price", "quantity", "quote_quantity")
     @classmethod
@@ -149,10 +154,15 @@ class BookTicker(MarketDataRecord):
     ask_quantity: Decimal = Field(ge=0)
     event_time: datetime = Field(default_factory=utc_now)
 
-    @field_validator("symbol", "exchange")
+    @field_validator("symbol")
     @classmethod
     def _upper(cls, value: str) -> str:
         return value.upper()
+
+    @field_validator("exchange")
+    @classmethod
+    def _lower(cls, value: str) -> str:
+        return value.lower()
 
     @field_validator("bid_price", "bid_quantity", "ask_price", "ask_quantity")
     @classmethod
@@ -212,10 +222,15 @@ class Kline(MarketDataRecord):
     taker_buy_quote_volume: Decimal = Field(ge=0)
     is_closed: bool = True
 
-    @field_validator("symbol", "exchange")
+    @field_validator("symbol")
     @classmethod
     def _upper(cls, value: str) -> str:
         return value.upper()
+
+    @field_validator("exchange")
+    @classmethod
+    def _lower(cls, value: str) -> str:
+        return value.lower()
 
     @model_validator(mode="after")
     def _check_ohlc_invariants(self) -> Kline:
