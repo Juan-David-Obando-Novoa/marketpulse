@@ -1,0 +1,15 @@
+apiVersion: 1
+
+providers:
+  - name: marketpulse
+    orgId: 1
+    folder: MarketPulse
+    type: file
+    disableDeletion: true
+    # Dashboards are provisioned from files in git, not edited in the UI.
+    # An edit made in Grafana is lost on the next restart, which is the
+    # intended pressure: the definition belongs in review with everything else.
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

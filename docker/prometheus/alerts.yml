@@ -1,0 +1,85 @@
+# ---------------------------------------------------------------------------
+# Alerts.
+#
+# Each rule states the failure it exists to catch. Rules that would fire on a
+# healthy weekend are deliberately absent -- crypto venues trade continuously,
+# so an idle feed here is always a fault and never a quiet market. That is what
+# makes these safe to page on.
+# ---------------------------------------------------------------------------
+groups:
+  - name: marketpulse-ingestion
+    interval: 30s
+    rules:
+      # The failure a rate counter cannot see: the socket is open, the process
+      # is up, and nothing is arriving. A rate reports that as a healthy zero.
+      - alert: FeedSilent
+        expr: time() - max by (source) (marketpulse_last_message_unixtime) > 120
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No market data from {{ $labels.source }} for over two minutes"
+          runbook: docs/runbook.md#feedsilent
+
+      - alert: FeedDisconnected
+        expr: marketpulse_feed_connected == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Feed {{ $labels.source }} disconnected for two minutes"
+          runbook: docs/runbook.md#feeddisconnected
+
+      - alert: IngestionLagHigh
+        expr: histogram_quantile(0.99, sum by (le, stream) (rate(marketpulse_event_lag_seconds_bucket[5m]))) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p99 ingestion lag on {{ $labels.stream }} above five seconds"
+          description: >-
+            Either the venue is slow or we are. The delivery-latency histogram
+            tells the two apart: if it is flat, the lag is upstream.
+          runbook: docs/runbook.md#ingestionlaghigh
+
+      - alert: DeadLetterRateElevated
+        expr: sum by (error_type) (rate(marketpulse_dead_letters_total[10m])) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Dead letters of type {{ $labels.error_type }} above 0.5/s"
+          description: >-
+            Sustained dead-lettering is upstream schema drift, not a transient
+            bad message. Inspect md.dead_letter.v1.
+          runbook: docs/runbook.md#deadletterrateelevated
+
+      - alert: VenueSequenceGaps
+        expr: sum by (symbol) (increase(marketpulse_sequence_gaps_total[15m])) > 100
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Losing book updates for {{ $labels.symbol }}"
+          description: >-
+            The venue's update_id sequence has holes: messages were sent that
+            we never received. Every component involved reports success.
+          runbook: docs/runbook.md#venuesequencegaps
+
+      - alert: ProducerBackpressure
+        expr: marketpulse_producer_queue_depth > 100000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "librdkafka queue depth is not draining"
+          description: "A rising floor, not a spike, is what matters here."
+
+      - alert: DeliveryFailures
+        expr: sum(rate(marketpulse_delivery_failures_total[5m])) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "The broker is rejecting messages"
+          description: "Sustained delivery failure is data loss, not a retry."

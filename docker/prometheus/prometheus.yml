@@ -1,0 +1,30 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    platform: marketpulse
+    environment: local
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # The ingestion producer. This is the only target that knows anything about
+  # upstream health, so it is the one that matters.
+  - job_name: marketpulse-producer
+    static_configs:
+      - targets: ["producer:9108"]
+
+  - job_name: redpanda
+    static_configs:
+      - targets: ["redpanda:9644"]
+    metrics_path: /public_metrics
+
+  - job_name: trino
+    static_configs:
+      - targets: ["trino:8080"]
+    metrics_path: /metrics
