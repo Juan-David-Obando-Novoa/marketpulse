@@ -91,7 +91,7 @@ bootstrap: ## Provision topics, register schemas and create the Iceberg tables
 	$(COMPOSE) exec -T redpanda rpk cluster config set auto_create_topics_enabled false
 	$(COMPOSE) $(INGESTION) run --rm producer marketpulse topics create
 	$(COMPOSE) $(INGESTION) run --rm producer marketpulse schemas register
-	$(COMPOSE) exec -T spark spark-sql -f /opt/marketpulse/src/marketpulse/streaming/ddl/bronze.sql
+	$(COMPOSE) exec -T spark spark-submit /opt/marketpulse/src/marketpulse/streaming/apply_ddl.py
 
 .PHONY: stream
 stream: ## Run the live websocket producer in the foreground

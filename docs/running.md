@@ -120,7 +120,7 @@ Then create the Iceberg tables. They are created by explicit DDL rather than
 inferred by the first write, so that the partition specs are the intended ones:
 
 ```powershell
-docker compose exec -T spark spark-sql -f /opt/marketpulse/src/marketpulse/streaming/ddl/bronze.sql
+docker compose exec -T spark spark-submit /opt/marketpulse/src/marketpulse/streaming/apply_ddl.py
 ```
 
 **Checkpoint:**
