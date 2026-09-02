@@ -7,6 +7,7 @@
 
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
+  <a href="docs/running.md">Running it</a> ·
   <a href="docs/architecture.md">Architecture</a> ·
   <a href="docs/adr/">Decisions</a> ·
   <a href="docs/runbook.md">Runbook</a> ·
@@ -84,6 +85,10 @@ limit 20;
 
 No API keys are needed. The feed is Binance's public read-only market-data
 mirror; the platform never places an order and has no credentials that could.
+
+On Windows, or to see what each `make` target actually does,
+[`docs/running.md`](docs/running.md) walks through the same sequence as raw
+`docker compose` commands with a checkpoint after every step.
 
 ---
 

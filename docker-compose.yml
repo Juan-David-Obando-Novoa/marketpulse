@@ -142,7 +142,7 @@ services:
       retries: 12
 
   iceberg-rest:
-    image: apache/iceberg-rest-fixture:1.6.0
+    image: apache/iceberg-rest-fixture:1.6.1
     container_name: mp-iceberg-rest
     profiles: [core]
     depends_on:
@@ -271,6 +271,10 @@ services:
       MP_S3__ENDPOINT: http://minio:9000
       MP_ICEBERG__REST_URI: http://iceberg-rest:8181
       MP_TRINO_HOST: trino
+      # 8080, not the host-facing 8090: inside the compose network dbt talks to
+      # the container port. Without this the profile falls back to its default
+      # and every model fails to connect.
+      MP_TRINO_PORT: "8080"
     command:
       - dagster-webserver
       - -h
@@ -283,8 +287,18 @@ services:
       - "3000:3000"
     volumes:
       - dagster-home:/opt/dagster/home
+      # The Spark assets submit jobs with `docker exec`, so the orchestrator
+      # needs the daemon socket. This is a local-development convenience and
+      # emphatically not a production pattern: a container with the Docker
+      # socket has root on the host. In a real deployment these assets would
+      # submit through a cluster API instead.
+      - /var/run/docker.sock:/var/run/docker.sock
 
   dagster-daemon:
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile
+      target: orchestration
     image: marketpulse/orchestration:0.1.0
     container_name: mp-dagster-daemon
     profiles: [orchestration]
@@ -295,6 +309,7 @@ services:
     command: ["dagster-daemon", "run", "-w", "/opt/dagster/app/workspace.yaml"]
     volumes:
       - dagster-home:/opt/dagster/home
+      - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
 
   # -------------------------------------------------------------------------

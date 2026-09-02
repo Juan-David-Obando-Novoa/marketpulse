@@ -57,6 +57,15 @@ RUN pip install --no-cache-dir \
 
 COPY orchestration /opt/dagster/app
 COPY dbt /opt/dagster/dbt
+
+# Resolve dbt packages and produce the manifest at BUILD time. @dbt_assets
+# reads target/manifest.json when the Dagster module is imported, so without
+# this the code location fails to load at start-up with a missing-file error
+# that says nothing about dbt. `dbt parse` needs no warehouse connection.
+RUN dbt deps --project-dir /opt/dagster/dbt/marketpulse \
+ && dbt parse --project-dir /opt/dagster/dbt/marketpulse \
+              --profiles-dir /opt/dagster/dbt/marketpulse
+
 RUN mkdir -p /opt/dagster/home && chown -R marketpulse /opt/dagster
 
 ENV DAGSTER_HOME=/opt/dagster/home \
