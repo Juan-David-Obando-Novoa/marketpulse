@@ -71,5 +71,11 @@ RUN pip install --no-cache-dir "pydantic>=2.7,<3" "pydantic-settings>=2.3,<3" \
 ENV PYTHONPATH=/opt/marketpulse/src:$PYTHONPATH
 ENV PYSPARK_PYTHON=python3
 
+# The base image's entrypoint puts /opt/spark/bin on PATH, but `docker exec`
+# does not run the entrypoint -- so spark-sql and spark-submit are missing for
+# every operational command and for the Dagster assets that shell in. Setting
+# it on the image makes both work without absolute paths everywhere.
+ENV PATH=/opt/spark/bin:/opt/spark/sbin:$PATH
+
 WORKDIR /opt/marketpulse
 USER spark
