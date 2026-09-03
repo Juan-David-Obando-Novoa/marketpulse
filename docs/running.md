@@ -208,6 +208,29 @@ turn green once the stack has been running for a day.
 docker compose exec -T trino trino --execute "select symbol, bar_start, close_price, vwap, order_flow_imbalance, time_weighted_spread_bps from lakehouse.gold.fct_market_1m order by bar_start desc limit 10"
 ```
 
+### Editing dbt after the image is built
+
+`docker/app/Dockerfile` does `COPY dbt /opt/dagster/dbt`: the dbt project is
+**baked into the image**, not bind-mounted like `./src` is for Spark. So an
+edit to a model, a macro or `dbt_project.yml` on your machine has no effect
+until the image is rebuilt:
+
+```powershell
+docker compose build dagster-webserver
+docker compose up -d
+```
+
+This is deliberate rather than an oversight. `dbt deps` and `dbt parse` run at
+build time because `@dbt_assets` reads `target/manifest.json` when the Dagster
+module is imported; mounting `./dbt` over that path would hide `dbt_packages/`
+and `target/`, and the code location would fail to load with an error that says
+nothing about dbt. The manifest is a build artefact, so changing the project
+means rebuilding.
+
+The tell that you are looking at a stale copy: dbt does *not* print
+`Unable to do partial parsing because a project config has changed` after you
+edited `dbt_project.yml`. If your change were visible, it would say so.
+
 *Make equivalent:* `make dbt-build`
 
 ---

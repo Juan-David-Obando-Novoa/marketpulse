@@ -41,7 +41,15 @@ vars:
 
 models:
   marketpulse:
-    +file_format: iceberg
+    # NO +file_format HERE. In dbt-trino `file_format` is not the table format
+    # (that is the connector's job -- the catalog is already Iceberg); it is an
+    # alias for the Iceberg `format` table property, whose only valid values are
+    # ORC, PARQUET and AVRO. Setting it to `iceberg` is the Spark/Databricks
+    # idiom and it fails twice over: dbt refuses to compile a model that sets
+    # both `file_format` and `properties.format`, and any model that escapes
+    # that check reaches Trino as `format = 'iceberg'` and is rejected. Every
+    # model in this project states its format in `properties`, which is the
+    # single place it belongs.
     +persist_docs:
       relation: true
       columns: true
@@ -81,7 +89,13 @@ seeds:
 snapshots:
   marketpulse:
     +target_schema: snapshots
-    +file_format: iceberg
+    # Same rule as the models above: the format goes in `properties`, never in
+    # `file_format`. Snapshots are small and rewritten in full, so they get the
+    # plain defaults with no partitioning.
+    +properties:
+      format: "'PARQUET'"
+      format_version: '2'
+      write_compression: "'ZSTD'"
 
 tests:
   marketpulse:
