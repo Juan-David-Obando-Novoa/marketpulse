@@ -40,6 +40,20 @@
     codec or the target file size is one edit, and so the properties cannot
     drift between models the way copy-pasted config blocks do.
 #}
+{#
+    DIALECT WARNING for `partitioning`: the bucket transform is spelled
+    differently by the two engines writing this lakehouse, and both spellings
+    are correct in their own place.
+
+        Spark  (src/marketpulse/streaming/ddl/bronze.sql):  bucket(16, symbol)
+        Trino  (everything under dbt/):                     bucket(symbol, 16)
+
+    Same Iceberg transform, same resulting partition spec -- only the argument
+    order differs. Trino rejects the Spark spelling with "Invalid partition
+    field declaration", which reads like the transform is unsupported rather
+    than merely written back to front. Do not "fix" the bronze DDL to match
+    these models, or vice versa.
+#}
 {% macro iceberg_properties(partitioning=none, sorted_by=none, target_file_size='134217728') %}
     {%- set props = {
         'format': "'PARQUET'",

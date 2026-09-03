@@ -44,6 +44,8 @@ USING iceberg
 -- days() rather than hours(): at five symbols an hourly partition holds a few
 -- thousand rows, and thousands of tiny partitions cost more in metadata than
 -- they save in pruning. bucket(16, symbol) gives symbol-predicate pruning
+-- (Spark's argument order. Trino writes the same transform as
+--  bucket(symbol, 16); the dbt models use that spelling and are not a typo.)
 -- without the unbounded partition count that partitioning BY symbol would.
 PARTITIONED BY (days(trade_time), bucket(16, symbol))
 TBLPROPERTIES (

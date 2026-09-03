@@ -6,7 +6,7 @@
         properties={
             'format': "'PARQUET'",
             'format_version': '2',
-            'partitioning': "ARRAY['day(event_time)', 'bucket(16, symbol)']",
+            'partitioning': "ARRAY['day(event_time)', 'bucket(symbol, 16)']",
             'sorted_by': "ARRAY['symbol', 'event_time', 'update_id']"
         },
         on_schema_change='append_new_columns'

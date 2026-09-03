@@ -3,11 +3,10 @@
         materialized='incremental',
         incremental_strategy='merge',
         unique_key=['exchange_id', 'symbol', 'trade_id'],
-        partition_by=['day(event_time)', 'bucket(16, symbol)'],
         properties={
             'format': "'PARQUET'",
             'format_version': '2',
-            'partitioning': "ARRAY['day(event_time)', 'bucket(16, symbol)']",
+            'partitioning': "ARRAY['day(event_time)', 'bucket(symbol, 16)']",
             'sorted_by': "ARRAY['symbol', 'event_time', 'trade_id']"
         },
         on_schema_change='append_new_columns'

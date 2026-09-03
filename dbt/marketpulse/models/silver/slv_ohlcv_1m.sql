@@ -6,7 +6,7 @@
         properties={
             'format': "'PARQUET'",
             'format_version': '2',
-            'partitioning': "ARRAY['day(bar_start)', 'bucket(8, symbol)']",
+            'partitioning': "ARRAY['day(bar_start)', 'bucket(symbol, 8)']",
             'sorted_by': "ARRAY['symbol', 'bar_start']"
         }
     )
