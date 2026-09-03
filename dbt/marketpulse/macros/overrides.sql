@@ -43,8 +43,7 @@
 {% macro iceberg_properties(partitioning=none, sorted_by=none, target_file_size='134217728') %}
     {%- set props = {
         'format': "'PARQUET'",
-        'format_version': '2',
-        'write_compression': "'ZSTD'"
+        'format_version': '2'
     } -%}
     {%- if partitioning -%}
         {%- do props.update({'partitioning': "ARRAY" ~ partitioning}) -%}

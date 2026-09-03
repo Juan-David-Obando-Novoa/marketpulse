@@ -1,7 +1,7 @@
 {{
     config(
         materialized='table',
-        properties={'format': "'PARQUET'", 'format_version': '2', 'write_compression': "'ZSTD'"}
+        properties={'format': "'PARQUET'", 'format_version': '2'}
     )
 }}
 

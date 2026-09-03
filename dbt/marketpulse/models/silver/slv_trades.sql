@@ -7,7 +7,6 @@
         properties={
             'format': "'PARQUET'",
             'format_version': '2',
-            'write_compression': "'ZSTD'",
             'partitioning': "ARRAY['day(event_time)', 'bucket(16, symbol)']",
             'sorted_by': "ARRAY['symbol', 'event_time', 'trade_id']"
         },

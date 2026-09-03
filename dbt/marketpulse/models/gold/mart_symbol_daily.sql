@@ -3,7 +3,7 @@
         materialized='incremental',
         incremental_strategy='merge',
         unique_key=['symbol', 'trading_date'],
-        properties={'format': "'PARQUET'", 'format_version': '2', 'write_compression': "'ZSTD'"}
+        properties={'format': "'PARQUET'", 'format_version': '2'}
     )
 }}
 

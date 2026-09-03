@@ -5,8 +5,7 @@
         unique_key=['rate_source', 'currency_pair', 'valid_from'],
         properties={
             'format': "'PARQUET'",
-            'format_version': '2',
-            'write_compression': "'ZSTD'"
+            'format_version': '2'
         }
     )
 }}
