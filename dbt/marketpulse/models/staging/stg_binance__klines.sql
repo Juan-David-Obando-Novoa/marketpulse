@@ -30,7 +30,13 @@ renamed as (
         open_time                                 as bar_start,
         -- The venue's close_time is the last millisecond of the window. Adding
         -- one gives the exclusive bound, so bars tile without overlap.
-        close_time + interval '1' millisecond     as bar_end,
+        --
+        -- date_add rather than `+ interval '1' millisecond`: Trino's INTERVAL
+        -- literal only admits YEAR, MONTH, DAY, HOUR, MINUTE and SECOND, so
+        -- the millisecond form (which Spark does accept) is a syntax error --
+        -- and one reported against the `as` that follows it, in whichever
+        -- model inlines this ephemeral one.
+        date_add('millisecond', 1, close_time)    as bar_end,
 
         cast(open as decimal(38, 18))             as open_price,
         cast(high as decimal(38, 18))             as high_price,
