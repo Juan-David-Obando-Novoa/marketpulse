@@ -187,3 +187,10 @@ models:
           - accepted_values:
               arguments:
                 values: [1, 7, 30]
+                # window_days is an integer. accepted_values quotes its values
+                # as strings unless told otherwise, and Trino will not compare
+                # an integer to a varchar: "Cannot find common type between
+                # integer and varchar(1)". Every other accepted_values in this
+                # project happens to be on a string column, which is why this
+                # is the only one that needs it.
+                quote: false
