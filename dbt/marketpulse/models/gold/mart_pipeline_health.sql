@@ -97,7 +97,7 @@ final as (
             else 'good'
         end as quality_verdict,
 
-        current_timestamp as _built_at
+        {{ marketpulse.built_at() }} as _built_at
 
     from daily as d
     left join reconciliation as r

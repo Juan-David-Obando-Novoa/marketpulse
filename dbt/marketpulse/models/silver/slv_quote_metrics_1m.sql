@@ -84,7 +84,7 @@ final as (
         -- means a gap in coverage, which makes the time-weighted number less
         -- trustworthy and should be surfaced rather than hidden.
         cast(least(covered_ms / 60000.0, 1.0) as decimal(9, 6)) as quote_coverage_ratio,
-        current_timestamp                                       as _built_at
+        {{ marketpulse.built_at() }}                                       as _built_at
 
     from aggregated
 

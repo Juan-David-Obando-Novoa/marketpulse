@@ -94,8 +94,8 @@ joined as (
         -- points: no gap filling, no boundary ambiguity, no correlated
         -- subquery per row.
         fx.rate                                                     as usdcop_rate,
-        cast(o.close_price * fx.rate as decimal(38, 8))             as close_price_cop,
-        cast(o.quote_volume * fx.rate as decimal(38, 8))            as quote_volume_cop,
+        cast({{ marketpulse.safe_multiply('o.close_price', 'fx.rate') }} as decimal(38, 8))             as close_price_cop,
+        cast({{ marketpulse.safe_multiply('o.quote_volume', 'fx.rate') }} as decimal(38, 8))            as quote_volume_cop,
 
         -- Quality flags carried on the fact, so a consumer can filter without
         -- joining anything.
@@ -104,7 +104,7 @@ joined as (
         q.quote_count is null                                       as is_quote_gap,
         coalesce(q.quote_coverage_ratio, 0) < 0.95                  as is_low_quote_coverage,
 
-        current_timestamp                                           as _built_at
+        {{ marketpulse.built_at() }}                                           as _built_at
 
     from ohlcv as o
     -- LEFT, always. A quiet minute is data, not an absence of data.

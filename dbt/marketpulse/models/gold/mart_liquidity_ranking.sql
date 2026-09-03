@@ -78,5 +78,5 @@ scored as (
 select
     *,
     rank() over (partition by window_days order by liquidity_score desc) as liquidity_rank,
-    current_timestamp                                                    as _built_at
+    {{ marketpulse.built_at() }}                                                    as _built_at
 from scored

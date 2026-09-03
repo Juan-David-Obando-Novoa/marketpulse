@@ -89,7 +89,7 @@ final as (
         cast(d.minutes_with_trades / 1440.0 as decimal(9, 6)) as minute_coverage_ratio,
 
         (d.close_price - d.open_price) / nullif(d.open_price, 0) as daily_return,
-        cast(d.quote_volume * d.usdcop_rate as decimal(38, 4))   as quote_volume_cop,
+        cast({{ marketpulse.safe_multiply('d.quote_volume', 'd.usdcop_rate') }} as decimal(38, 4))   as quote_volume_cop,
 
         -- Rank by turnover within the day. Recomputed per day rather than
         -- stored, so a new instrument does not renumber history.
@@ -97,7 +97,7 @@ final as (
             partition by d.trading_date order by d.quote_volume desc
         ) as turnover_rank,
 
-        current_timestamp as _built_at
+        {{ marketpulse.built_at() }} as _built_at
 
     from daily as d
 

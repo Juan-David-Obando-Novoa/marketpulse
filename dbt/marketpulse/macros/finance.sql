@@ -27,7 +27,7 @@
 {% macro vwap(price_column, quantity_column) %}
     case
         when sum({{ quantity_column }}) > 0
-        then sum({{ price_column }} * {{ quantity_column }}) / sum({{ quantity_column }})
+        then sum({{ marketpulse.safe_multiply(price_column, quantity_column) }}) / sum({{ quantity_column }})
     end
 {% endmacro %}
 
@@ -67,4 +67,40 @@
     from_unixtime(
         floor(to_unixtime({{ timestamp_column }}) / {{ minutes * 60 }}) * {{ minutes * 60 }}
     )
+{% endmacro %}
+
+{#
+    Multiply two decimals without overflowing.
+
+    Trino's rule for DECIMAL multiplication is that the result takes
+    scale = s1 + s2, with precision capped at 38. Every monetary column in this
+    project is decimal(38, 18) -- chosen deliberately over float so that money
+    is exact -- so a plain `price * quantity` produces decimal(38, 36), which
+    leaves exactly TWO integer digits. Anything over 99.99 raises "Decimal
+    overflow" at runtime, which means it survives every test on small numbers
+    and fails the first time it meets a real BTC price.
+
+    Casting the operands down first buys the integer digits back: two
+    decimal(38, 9) operands give decimal(38, 18), or 20 integer digits. Nine
+    decimal places is already more than the venue publishes (tick and step
+    sizes bottom out at 1e-8), so nothing real is rounded away.
+#}
+{% macro safe_multiply(left, right, operand_scale=9) %}
+    (
+        cast({{ left }} as decimal(38, {{ operand_scale }}))
+        * cast({{ right }} as decimal(38, {{ operand_scale }}))
+    )
+{% endmacro %}
+
+
+{#
+    The build timestamp, at a precision Iceberg accepts.
+
+    Trino's `current_timestamp` is timestamp(3) with time zone, and the Iceberg
+    connector refuses to write anything but timestamp(6): "Timestamp precision
+    (3) not supported for Iceberg". Every model carries a _built_at, so this
+    exists to make that cast impossible to forget in the next one.
+#}
+{% macro built_at() %}
+    cast(current_timestamp as timestamp(6) with time zone)
 {% endmacro %}

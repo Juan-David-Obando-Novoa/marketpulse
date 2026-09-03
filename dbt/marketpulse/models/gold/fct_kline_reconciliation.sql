@@ -102,5 +102,5 @@ select
         when abs(coalesce(trade_count_diff, 0)) > 2     then 'count_divergence'
         else 'ok'
     end                as reconciliation_status,
-    current_timestamp  as _built_at
+    {{ marketpulse.built_at() }}  as _built_at
 from compared

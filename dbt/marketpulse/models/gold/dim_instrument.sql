@@ -60,7 +60,7 @@ final as (
             else 'ok'
         end                                               as coverage_status,
 
-        current_timestamp                                 as _built_at
+        {{ marketpulse.built_at() }}                                 as _built_at
 
     from reference as r
     full outer join observed as o

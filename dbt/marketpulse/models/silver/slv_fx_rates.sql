@@ -72,5 +72,5 @@ select
     *,
     date_diff('day', valid_from, valid_to) as validity_days,
     valid_to <> source_valid_to            as was_rebounded,
-    current_timestamp                      as _built_at
+    {{ marketpulse.built_at() }}                      as _built_at
 from rebounded
