@@ -93,6 +93,14 @@ models:
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns: [symbol, trading_date]
+      # A ratio that is always exactly zero satisfies "between 0 and 1", which
+      # is how integer division hid here for a whole run: every coverage,
+      # duplicate and reconciliation figure read 0.000000 while the pipeline
+      # was working correctly. This asserts the ratio actually varies with its
+      # numerator, which is the property the range test cannot see.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "minute_coverage_ratio > 0 or minutes_with_trades = 0"
     columns:
       - name: trading_date
         data_tests: [not_null]

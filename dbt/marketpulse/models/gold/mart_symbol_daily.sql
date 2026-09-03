@@ -86,7 +86,7 @@ final as (
 
         -- 1440 minutes in a day; anything less means the tape was quiet or we
         -- were not listening, and the two must be distinguishable.
-        cast(d.minutes_with_trades / 1440.0 as decimal(9, 6)) as minute_coverage_ratio,
+        {{ marketpulse.ratio('d.minutes_with_trades', '1440') }} as minute_coverage_ratio,
 
         (d.close_price - d.open_price) / nullif(d.open_price, 0) as daily_return,
         cast({{ marketpulse.safe_multiply('d.quote_volume', 'd.usdcop_rate') }} as decimal(38, 4))   as quote_volume_cop,

@@ -71,13 +71,13 @@ final as (
         r.volume_divergence_minutes,
         r.minutes_we_missed,
         r.worst_volume_rel_diff,
-        cast(r.matched_minutes / nullif(r.reconciled_minutes, 0) as decimal(9, 6))
+        {{ marketpulse.ratio('r.matched_minutes', 'r.reconciled_minutes') }}
             as reconciliation_pass_ratio,
 
         -- Delivery semantics in practice
         dup.trades,
         dup.replayed_trades,
-        cast(dup.replayed_trades / nullif(dup.trades, 0) as decimal(9, 6)) as duplicate_ratio,
+        {{ marketpulse.ratio('dup.replayed_trades', 'dup.trades') }} as duplicate_ratio,
         d.book_updates_skipped,
 
         -- Timeliness
@@ -90,7 +90,7 @@ final as (
         case
             when d.minute_coverage_ratio < 0.90                               then 'incomplete'
             when coalesce(r.minutes_we_missed, 0) > 5                         then 'incomplete'
-            when coalesce(r.matched_minutes / nullif(r.reconciled_minutes, 0), 1) < 0.98
+            when coalesce({{ marketpulse.ratio('r.matched_minutes', 'r.reconciled_minutes') }}, 1) < 0.98
                                                                               then 'divergent'
             when coalesce(dup.p99_ingestion_lag_ms, 0) > 30000                then 'delayed'
             when d.quote_gap_minutes > 120                                    then 'degraded_liquidity_view'

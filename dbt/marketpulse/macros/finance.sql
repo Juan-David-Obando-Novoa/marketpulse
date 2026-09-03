@@ -104,3 +104,29 @@
 {% macro built_at() %}
     cast(current_timestamp as timestamp(6) with time zone)
 {% endmacro %}
+
+
+{#
+    A ratio in [0, 1] that is actually a ratio.
+
+    Trino gives decimal division scale = max(s1, s2), and an integer has
+    scale 0. So `count_a / count_b` on two bigints is INTEGER division and
+    collapses every proportion to 0 or 1, and `count / 1440.0` keeps a single
+    decimal place and rounds 0.041 to 0.0. Neither raises; both silently
+    report a plausible number.
+
+    That is worse than the overflow safe_multiply guards against, because a
+    `between 0 and 1` test passes on a column that is always exactly zero.
+    This is the only reason mart_pipeline_health reported perfect-looking
+    zeros for coverage, duplicates and reconciliation on a stack that was
+    working.
+
+    Casting the numerator first sets the result scale explicitly.
+#}
+{% macro ratio(numerator, denominator, scale=6) %}
+    cast(
+        cast({{ numerator }} as decimal(38, {{ scale }}))
+        / nullif({{ denominator }}, 0)
+        as decimal(9, {{ scale }})
+    )
+{% endmacro %}
