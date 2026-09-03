@@ -32,13 +32,12 @@ models:
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns: [symbol, bar_start]
-      # A range join against an interval table is exactly where a duplicated
-      # row appears if the intervals ever overlap. This is the tripwire.
-      - dbt_utils.equal_rowcount:
-          arguments:
-            compare_model: ref('slv_ohlcv_1m')
-          config:
-            severity: error
+      # The row-count tripwire for the FX range join lives in
+      # tests/assert_fx_join_does_not_multiply_rows.sql rather than here:
+      # dbt_utils.equal_rowcount emits a synthetic join key that Trino cannot
+      # resolve ("Column 'id_dbtutils_test_equal_rowcount' cannot be
+      # resolved"), and a singular test also reports WHICH minutes multiplied
+      # instead of only that the totals disagree.
     columns:
       - name: bar_start
         data_tests: [not_null]

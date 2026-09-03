@@ -20,7 +20,12 @@ renamed as (
     select
         exchange                                  as exchange_id,
         symbol,
-        interval                                  as bar_interval,
+        -- Quoted: `interval` starts an INTERVAL literal to Trino's parser, so
+        -- the bare column name makes it choke on the following `as` with
+        -- "mismatched input 'as'" -- an error that points at the alias and
+        -- says nothing about the real culprit. This model is ephemeral, so the
+        -- syntax error surfaces inside whichever model inlines it.
+        "interval"                                as bar_interval,
 
         open_time                                 as bar_start,
         -- The venue's close_time is the last millisecond of the window. Adding
